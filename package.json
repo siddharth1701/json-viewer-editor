@@ -1,0 +1,55 @@
+{
+  "name": "json-viewer-editor",
+  "version": "1.0.0",
+  "description": "Ultimate JSON Viewer & Editor - Professional JSON tool with editing, comparison, and visualization features",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview"
+  },
+  "keywords": [
+    "json",
+    "viewer",
+    "editor",
+    "validator"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@headlessui/react": "^2.2.9",
+    "@monaco-editor/react": "^4.7.0",
+    "ajv": "^8.17.1",
+    "d3": "^7.9.0",
+    "date-fns": "^4.1.0",
+    "html2canvas": "^1.4.1",
+    "jmespath": "^0.16.0",
+    "js-yaml": "^4.1.0",
+    "jsondiffpatch": "^0.7.3",
+    "jsonpath-plus": "^10.3.0",
+    "jspdf": "^3.0.3",
+    "lucide-react": "^0.552.0",
+    "papaparse": "^5.5.3",
+    "qrcode.react": "^4.2.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "react-error-boundary": "^6.0.0",
+    "react-window": "^2.2.2",
+    "xml-js": "^1.6.11",
+    "zustand": "^5.0.8"
+  },
+  "devDependencies": {
+    "@types/d3": "^7.4.3",
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^24.10.0",
+    "@types/papaparse": "^5.5.0",
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
+    "@vitejs/plugin-react": "^5.1.0",
+    "autoprefixer": "^10.4.21",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^3.4.16",
+    "typescript": "^5.9.3",
+    "vite": "^7.1.12"
+  }
+}

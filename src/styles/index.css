@@ -1,0 +1,187 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+
+  color-scheme: light dark;
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  display: flex;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+#root {
+  width: 100%;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* Custom scrollbar styles */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-gray-100 dark:bg-gray-800;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-gray-300 dark:bg-gray-600 rounded;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-gray-400 dark:bg-gray-500;
+}
+
+/* Monaco Editor theme overrides */
+.monaco-editor {
+  @apply rounded-lg;
+}
+
+/* Tree view animations */
+.tree-node {
+  @apply transition-all duration-200 ease-in-out;
+}
+
+.tree-node:hover {
+  @apply bg-gray-50 dark:bg-gray-800;
+}
+
+/* Context menu styles */
+.context-menu {
+  @apply absolute z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg py-1 min-w-48;
+  animation: slideIn 0.15s ease-out;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Modal backdrop */
+.modal-backdrop {
+  @apply fixed inset-0 bg-black bg-opacity-50 z-40 animate-fade-in;
+}
+
+/* Tooltip styles */
+.tooltip {
+  @apply absolute z-50 bg-gray-900 text-white text-xs rounded py-1 px-2 pointer-events-none;
+  animation: fadeIn 0.2s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Button hover effects */
+.btn-hover {
+  @apply transition-all duration-200 hover:scale-105 active:scale-95;
+}
+
+/* JSON syntax highlighting classes */
+.json-key {
+  @apply text-blue-600 dark:text-blue-400 font-semibold;
+}
+
+.json-string {
+  @apply text-green-600 dark:text-green-400;
+}
+
+.json-number {
+  @apply text-purple-600 dark:text-purple-400;
+}
+
+.json-boolean {
+  @apply text-red-600 dark:text-red-400;
+}
+
+.json-null {
+  @apply text-gray-500 dark:text-gray-400;
+}
+
+/* Diff highlighting */
+.diff-added {
+  @apply bg-green-100 dark:bg-green-900 dark:bg-opacity-30;
+}
+
+.diff-removed {
+  @apply bg-red-100 dark:bg-red-900 dark:bg-opacity-30;
+}
+
+.diff-modified {
+  @apply bg-yellow-100 dark:bg-yellow-900 dark:bg-opacity-30;
+}
+
+/* Loading spinner */
+.spinner {
+  border: 3px solid rgba(0, 0, 0, 0.1);
+  border-left-color: currentColor;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Focus visible styles for accessibility */
+*:focus-visible {
+  @apply outline-2 outline-offset-2 outline-blue-500;
+}
+
+/* High contrast mode */
+@media (prefers-contrast: high) {
+  .tree-node:hover {
+    @apply bg-gray-200 dark:bg-gray-700;
+  }
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Print styles */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+}

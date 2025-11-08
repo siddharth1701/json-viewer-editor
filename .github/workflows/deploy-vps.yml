@@ -1,0 +1,50 @@
+name: Deploy to VPS
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy to VPS via SSH
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USERNAME }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT || 22 }}
+          script: |
+            echo "Starting deployment..."
+
+            # Navigate to project directory
+            cd /var/www/json-viewer
+
+            # Pull latest changes
+            echo "Pulling latest changes from main branch..."
+            git pull origin main
+
+            # Install dependencies
+            echo "Installing dependencies..."
+            npm install --production=false
+
+            # Build project
+            echo "Building production build..."
+            npm run build
+
+            # Restart nginx
+            echo "Restarting nginx..."
+            sudo systemctl restart nginx
+
+            echo "Deployment completed successfully!"
+
+      - name: Deployment status
+        if: success()
+        run: echo "✅ Deployment to VPS completed successfully!"
+
+      - name: Deployment failed
+        if: failure()
+        run: echo "❌ Deployment to VPS failed!"
