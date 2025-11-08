@@ -5,6 +5,7 @@ import ViewTabs from '../Views/ViewTabs';
 import TreeView from '../Views/TreeView';
 import CodeView from '../Views/CodeView';
 import RawView from '../Views/RawView';
+import VisualizationView from '../Views/VisualizationView';
 import ComparisonView from '../Views/ComparisonView';
 
 export default function MainContent() {
@@ -81,14 +82,7 @@ export default function MainContent() {
               {viewMode === 'tree' && <TreeView />}
               {viewMode === 'code' && <CodeView />}
               {viewMode === 'raw' && <RawView />}
-              {viewMode === 'visualization' && (
-                <div className="h-full flex items-center justify-center text-gray-500">
-                  <div className="text-center">
-                    <p className="mb-2">Visualization View</p>
-                    <p className="text-sm">D3.js tree diagram will be rendered here</p>
-                  </div>
-                </div>
-              )}
+              {viewMode === 'visualization' && <VisualizationView />}
             </div>
           </>
         )}
