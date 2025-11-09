@@ -8,6 +8,7 @@ interface DiffLine {
   lineNumber: number;
   content: string;
   pair?: number;
+  charDiffs?: Array<{ start: number; end: number; type: 'added' | 'removed' | 'modified' }>;
 }
 
 export default function ComparisonView() {
@@ -30,8 +31,81 @@ export default function ComparisonView() {
   const containerRef = useRef<HTMLDivElement>(null);
   const diffLineRefsA = useRef<(HTMLDivElement | null)[]>([]);
   const diffLineRefsB = useRef<(HTMLDivElement | null)[]>([]);
+  const dropdownRefA = useRef<HTMLDivElement>(null);
+  const dropdownRefB = useRef<HTMLDivElement>(null);
 
   const comparisonJsonA = useAppStore((state) => state.comparisonJsonA);
+
+  // Function to find character-level differences between two strings
+  const findCharDiffs = (strA: string, strB: string) => {
+    const diffs: Array<{ start: number; end: number; type: 'added' | 'removed' | 'modified' }> = [];
+
+    const minLen = Math.min(strA.length, strB.length);
+
+    // Find first differing character
+    let diffStart = -1;
+    for (let i = 0; i < minLen; i++) {
+      if (strA[i] !== strB[i]) {
+        diffStart = i;
+        break;
+      }
+    }
+
+    if (diffStart !== -1) {
+      // Find last differing character
+      let diffEnd = minLen - 1;
+      for (let i = minLen - 1; i >= diffStart; i--) {
+        if (strA[i] !== strB[i]) {
+          diffEnd = i;
+          break;
+        }
+      }
+
+      diffs.push({
+        start: diffStart,
+        end: diffEnd + 1,
+        type: 'modified'
+      });
+    }
+
+    // Handle length differences
+    if (strA.length !== strB.length) {
+      if (strA.length > strB.length) {
+        diffs.push({
+          start: strB.length,
+          end: strA.length,
+          type: 'removed'
+        });
+      } else {
+        diffs.push({
+          start: strA.length,
+          end: strB.length,
+          type: 'added'
+        });
+      }
+    }
+
+    return diffs.length > 0 ? diffs : undefined;
+  };
+
+  // Handle outside click to close dropdowns
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRefA.current && !dropdownRefA.current.contains(event.target as Node)) {
+        setShowLoadMenuA(false);
+      }
+      if (dropdownRefB.current && !dropdownRefB.current.contains(event.target as Node)) {
+        setShowLoadMenuB(false);
+      }
+    };
+
+    if (showLoadMenuA || showLoadMenuB) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+      };
+    }
+  }, [showLoadMenuA, showLoadMenuB]);
 
   // Pre-fill JSON A from store if available
   useEffect(() => {
@@ -152,17 +226,21 @@ export default function ComparisonView() {
           pair: i,
         });
       } else {
+        // Lines are different - add character-level diff info
+        const charDiffs = findCharDiffs(lineA, lineB);
         newDiffLinesA.push({
           type: 'modified',
           lineNumber: i + 1,
           content: lineA,
           pair: i,
+          charDiffs,
         });
         newDiffLinesB.push({
           type: 'modified',
           lineNumber: i + 1,
           content: lineB,
           pair: i,
+          charDiffs: findCharDiffs(lineB, lineA), // Reverse comparison for side B
         });
       }
     }
@@ -312,6 +390,62 @@ export default function ComparisonView() {
     return '  ';
   };
 
+  // Component to render text with character-level highlighting
+  const HighlightedText = ({ line, charDiffs }: { line: DiffLine; charDiffs?: Array<{ start: number; end: number; type: 'added' | 'removed' | 'modified' }> }) => {
+    if (!charDiffs || charDiffs.length === 0) {
+      return <>{line.content || '\u00A0'}</>;
+    }
+
+    const parts: React.ReactNode[] = [];
+    let lastIndex = 0;
+
+    charDiffs.forEach((diff) => {
+      // Add normal text before this diff
+      if (lastIndex < diff.start) {
+        parts.push(
+          <span key={`normal-${lastIndex}`}>
+            {line.content.substring(lastIndex, diff.start)}
+          </span>
+        );
+      }
+
+      // Add highlighted diff text
+      const diffText = line.content.substring(diff.start, diff.end);
+      if (diff.type === 'modified') {
+        parts.push(
+          <span key={`diff-${diff.start}`} className="bg-red-300 dark:bg-red-700 px-0.5 font-semibold rounded">
+            {diffText}
+          </span>
+        );
+      } else if (diff.type === 'removed') {
+        parts.push(
+          <span key={`diff-${diff.start}`} className="bg-red-400 dark:bg-red-800 px-0.5 line-through font-semibold rounded">
+            {diffText}
+          </span>
+        );
+      } else {
+        parts.push(
+          <span key={`diff-${diff.start}`} className="bg-green-300 dark:bg-green-700 px-0.5 font-semibold rounded underline">
+            {diffText}
+          </span>
+        );
+      }
+
+      lastIndex = diff.end;
+    });
+
+    // Add remaining text after last diff
+    if (lastIndex < line.content.length) {
+      parts.push(
+        <span key={`normal-${lastIndex}`}>
+          {line.content.substring(lastIndex)}
+        </span>
+      );
+    }
+
+    return <>{parts}</>;
+  };
+
   const hasDifferences = diffLinesA.some(line => line.type !== 'unchanged');
   const canCompare = jsonTextA.trim() && jsonTextB.trim() && parsedJsonA && parsedJsonB && !errorA && !errorB;
 
@@ -422,7 +556,7 @@ export default function ComparisonView() {
         >
           <div className="h-10 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 flex items-center justify-between">
             <span className="font-medium text-sm">JSON A</span>
-            <div className="relative">
+            <div className="relative" ref={dropdownRefA}>
               <button
                 onClick={() => setShowLoadMenuA(!showLoadMenuA)}
                 className="px-3 py-1 text-xs bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 rounded transition-colors flex items-center gap-1"
@@ -492,7 +626,7 @@ export default function ComparisonView() {
                     {getLinePrefix(line.type, 'A')}
                   </span>
                   <span className="flex-1 px-2 whitespace-nowrap overflow-x-auto">
-                    {line.content || '\u00A0'}
+                    <HighlightedText line={line} charDiffs={line.charDiffs} />
                   </span>
                 </div>
               ))}
@@ -513,7 +647,7 @@ export default function ComparisonView() {
         <div className="flex-1 flex flex-col">
           <div className="h-10 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 flex items-center justify-between">
             <span className="font-medium text-sm">JSON B</span>
-            <div className="relative">
+            <div className="relative" ref={dropdownRefB}>
               <button
                 onClick={() => setShowLoadMenuB(!showLoadMenuB)}
                 className="px-3 py-1 text-xs bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 rounded transition-colors flex items-center gap-1"
@@ -583,7 +717,7 @@ export default function ComparisonView() {
                     {getLinePrefix(line.type, 'B')}
                   </span>
                   <span className="flex-1 px-2 whitespace-nowrap overflow-x-auto">
-                    {line.content || '\u00A0'}
+                    <HighlightedText line={line} charDiffs={line.charDiffs} />
                   </span>
                 </div>
               ))}
