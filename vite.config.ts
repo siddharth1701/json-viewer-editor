@@ -4,7 +4,7 @@ import path from 'path'
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  base: '/',  // Use root for Vercel/Netlify, or '/json-viewer-editor/' for GitHub Pages
+  base: '/json-viewer-editor/',  // GitHub Pages base path
   plugins: [react()],
   resolve: {
     alias: {
