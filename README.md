@@ -383,14 +383,36 @@ git push origin main
 
 ## Contributing
 
-This is a demonstration project. Feel free to fork and customize for your needs.
+This is a personal side project built to explore modern web technologies and JSON processing. Contributions, bug reports, and feature suggestions are welcome! Feel free to fork, enhance, and adapt it for your own use cases.
+
+If you'd like to contribute:
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+Feel free to customize and use this project for your personal needs.
 
 ## Known Limitations
 
-- D3.js visualization is a placeholder (structure in place, implementation pending)
-- Some advanced features like full JSONPath queries are placeholders
-- PWA features (service worker, manifest) are not yet implemented
-- Search/filter functionality has UI placeholders but needs full implementation
+### Current Implementation Status:
+- **Visualization View**: D3.js tree visualization is implemented with interactive zoom/pan, collapsible nodes, and smart auto-collapse at depth > 2. Perfect for exploring complex JSON structures visually.
+- **Search & Filter**: UI placeholders are in place; full search, filter, and regex support need implementation
+- **Advanced Queries**: JSONPath and JMESPath have basic support; advanced query operations need enhancement
+- **PWA Features**: Service worker, app manifest, and offline functionality are not yet implemented
+- **Virtual Scrolling**: Tree view doesn't use virtual scrolling; may have performance issues with 10,000+ nodes
+- **PDF Export**: Export as PDF report is not implemented
+- **Unified Diff View**: Comparison view supports split-pane; unified diff format not yet available
+
+### Browser Compatibility:
+- Tested on Chrome/Edge 90+, Firefox 88+, Safari 14+
+- Some advanced CSS features may not work on older browsers
+
+### Performance Considerations:
+- JSON files larger than 10MB may experience slower tree rendering
+- Undo/redo history limited to 50 states to prevent memory issues
+- Large JSON structures (>5000 nodes) may require collapsing nodes for better responsiveness
 
 ## Performance
 
@@ -401,16 +423,29 @@ This is a demonstration project. Feel free to fork and customize for your needs.
 
 ## Future Enhancements
 
-1. Complete D3.js tree visualization with zoom/pan
-2. Full JSONPath and JMESPath query implementation
-3. Advanced search with regex and replace all
-4. JSON Schema generation and validation UI
-5. Complete PWA support with offline mode
-6. Virtual scrolling for tree view with 10,000+ nodes
-7. Export diffs as reports
-8. Generate shareable links with URL compression
-9. Enhanced accessibility with screen reader support
-10. Guided tour for first-time users
+### High Priority
+1. **Complete Search & Filter**: Implement full search functionality with regex support, find & replace, and highlighting
+2. **Advanced Comparison Features**: Add unified diff view, ignore key order option, and export diff reports
+3. **Virtual Scrolling**: Implement virtual scrolling in tree view to handle 10,000+ nodes efficiently
+4. **JSON Schema**: Complete JSON Schema generation and validation UI
+5. **Accessibility**: Full keyboard navigation, screen reader optimization, and high contrast mode
+
+### Medium Priority
+6. **Full JSONPath/JMESPath**: Complete implementation of advanced path queries
+7. **PWA Support**: Add service worker, app manifest, and offline functionality
+8. **Enhanced Diff Highlighting**: More granular character-level diff highlighting and visual improvements
+9. **Shareable Links**: Generate URL-encoded shareable links with data compression
+10. **Code Snippets**: Copy JSON as code snippets in multiple programming languages
+
+### Lower Priority (Nice-to-Have)
+11. **Advanced Visualizations**: Additional graph types (force-directed, hierarchical layouts)
+12. **Guided Tour**: Interactive first-time user onboarding
+13. **Data Generation**: Generate mock data from JSON schemas
+14. **Batch Operations**: Process multiple JSON files at once
+15. **Collaborative Features**: Real-time collaboration (would require backend)
+
+### Community Suggestions Welcome!
+Have ideas for new features? Open an issue or submit a pull request!
 
 ## License
 
@@ -431,4 +466,3 @@ Built with love using:
 **Status**: Production Ready (Core Features)
 
 For questions or issues, please check the GitHub repository.
-# Repository is now public and ready for GitHub Pages deployment
