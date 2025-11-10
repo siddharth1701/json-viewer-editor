@@ -1,13 +1,16 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import {
   Moon, Sun, Upload, Download, Copy, Trash2,
   Undo2, Redo2, Search, Code2, FileJson,
-  GitCompare, Settings, HelpCircle
+  GitCompare, Settings, HelpCircle, Database, Activity, Maximize, Minimize
 } from 'lucide-react';
+import { toggleFullscreen, isCurrentlyFullscreen } from '@/utils/fullscreenUtils';
 import { useAppStore } from '@/stores/useAppStore';
 import { useJsonActions } from '@/hooks/useJsonActions';
 import { validateJSON } from '@/utils/jsonUtils';
 import SearchModal from '@/components/Modals/SearchModal';
+import QueryTransformModal from '@/components/Modals/QueryTransformModal';
+import PerformanceMonitorModal from '@/components/Modals/PerformanceMonitorModal';
 
 export default function Navbar() {
   const isDarkMode = useAppStore((state) => state.isDarkMode);
@@ -25,11 +28,42 @@ export default function Navbar() {
 
   const [showHelp, setShowHelp] = useState(false);
   const [showSearchModal, setShowSearchModal] = useState(false);
+  const [showQueryTransformModal, setShowQueryTransformModal] = useState(false);
+  const [showPerformanceMonitor, setShowPerformanceMonitor] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { copyToClipboard, downloadJson, hasContent } = useJsonActions();
 
   const activeTab = tabs.find((tab) => tab.id === activeTabId);
+
+  // Fullscreen handler
+  const handleFullscreenToggle = async () => {
+    const appElement = document.getElementById('app-root') || document.querySelector('main');
+    if (appElement) {
+      await toggleFullscreen(appElement as HTMLElement);
+      setIsFullscreen(isCurrentlyFullscreen());
+    }
+  };
+
+  // Listen for fullscreen changes
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(isCurrentlyFullscreen());
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    document.addEventListener('mozfullscreenchange', handleFullscreenChange);
+    document.addEventListener('msfullscreenchange', handleFullscreenChange);
+
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+      document.removeEventListener('mozfullscreenchange', handleFullscreenChange);
+      document.removeEventListener('msfullscreenchange', handleFullscreenChange);
+    };
+  }, []);
 
   const handleStartComparison = () => {
     const activeTab = tabs.find(tab => tab.id === activeTabId);
@@ -130,6 +164,16 @@ export default function Navbar() {
         </button>
 
         <button
+          onClick={() => setShowQueryTransformModal(true)}
+          disabled={!hasContent}
+          className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+          title="Query & Transform (JSONPath, Schema)"
+          aria-label="Query and transform"
+        >
+          <Database className="w-5 h-5" />
+        </button>
+
+        <button
           className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
           title="Generate Code"
           aria-label="Generate code"
@@ -148,6 +192,20 @@ export default function Navbar() {
           className="hidden"
           aria-label="Upload JSON file"
         />
+        <button
+          onClick={handleFullscreenToggle}
+          disabled={!hasContent}
+          className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+          title={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
+          aria-label="Toggle fullscreen"
+        >
+          {isFullscreen ? (
+            <Minimize className="w-5 h-5" />
+          ) : (
+            <Maximize className="w-5 h-5" />
+          )}
+        </button>
+
         <button
           onClick={() => fileInputRef.current?.click()}
           disabled={!activeTabId}
@@ -179,6 +237,16 @@ export default function Navbar() {
         </button>
 
         <div className="w-px h-6 bg-gray-300 dark:bg-gray-600 mx-1" />
+
+        <button
+          onClick={() => setShowPerformanceMonitor(true)}
+          disabled={!hasContent}
+          className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+          title="Performance Monitor"
+          aria-label="Show performance metrics"
+        >
+          <Activity className="w-5 h-5" />
+        </button>
 
         <button
           onClick={() => setShowHelp(!showHelp)}
@@ -237,6 +305,12 @@ export default function Navbar() {
 
       {/* Search Modal */}
       <SearchModal isOpen={showSearchModal} onClose={() => setShowSearchModal(false)} />
+
+      {/* Query & Transform Modal */}
+      <QueryTransformModal isOpen={showQueryTransformModal} onClose={() => setShowQueryTransformModal(false)} />
+
+      {/* Performance Monitor Modal */}
+      <PerformanceMonitorModal isOpen={showPerformanceMonitor} onClose={() => setShowPerformanceMonitor(false)} />
     </nav>
   );
 }

@@ -118,7 +118,6 @@ A professional, feature-rich web application for viewing, editing, validating, a
 - ✅ Recent files sidebar (stores last 10)
 - ✅ localStorage persistence
 - ✅ Session restore on page load
-- ✅ Bookmarks feature
 
 #### 13. Export & Share ✅
 - ✅ Download as .json file
@@ -143,15 +142,7 @@ A professional, feature-rich web application for viewing, editing, validating, a
 - ✅ Clear all data functionality
 - ✅ No server uploads, no tracking
 
-#### 16. Annotations & Comments ✅
-- ✅ Add comments to JSON paths
-- ✅ Comment panel with all annotations
-- ⏳ Export JSON with embedded comments
-- ✅ Version snapshots
-- ✅ Snapshot history with timestamps
-- ✅ Restore previous snapshots
-
-#### 17. Sample Library ✅
+#### 16. Sample Library ✅
 - ✅ Load sample dropdown
 - ✅ REST API response sample
 - ✅ Package.json config sample
@@ -161,21 +152,21 @@ A professional, feature-rich web application for viewing, editing, validating, a
 - ✅ Array of objects sample
 - ✅ Instant loading
 
-#### 18. Help & Tutorial ✅
+#### 17. Help & Tutorial ⏳
 - ✅ Help button with shortcuts modal
 - ✅ Keyboard shortcuts reference
 - ✅ Privacy information tooltips
 - ⏳ Guided tour
 - ⏳ First-time user onboarding
 
-#### 19. Accessibility ⏳
+#### 18. Accessibility ⏳
 - ✅ ARIA labels on interactive elements
 - ✅ Focus indicators
 - ⏳ Full keyboard navigation
 - ⏳ Screen reader optimization
 - ⏳ High contrast mode
 
-#### 20. Progressive Web App ⏳
+#### 19. Progressive Web App ⏳
 - ⏳ Installable as desktop/mobile app
 - ⏳ Offline functionality
 - ⏳ Service worker caching

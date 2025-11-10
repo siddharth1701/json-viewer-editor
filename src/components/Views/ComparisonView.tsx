@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Upload, Link as LinkIcon, ChevronUp, ChevronDown } from 'lucide-react';
+import { Upload, Link as LinkIcon, ChevronUp, ChevronDown, Settings2, FileText } from 'lucide-react';
 import { useAppStore } from '@/stores/useAppStore';
 import { validateJSON } from '@/utils/jsonUtils';
 
@@ -26,6 +26,9 @@ export default function ComparisonView() {
   const [leftWidth, setLeftWidth] = useState(50); // 50% default
   const [isResizing, setIsResizing] = useState(false);
   const [currentDiffIndex, setCurrentDiffIndex] = useState(0);
+  const [unifiedDiffMode, setUnifiedDiffMode] = useState(false);
+  const [ignoreKeyOrder, setIgnoreKeyOrder] = useState(false);
+  const [showDiffOptions, setShowDiffOptions] = useState(false);
   const fileInputRefA = useRef<HTMLInputElement>(null);
   const fileInputRefB = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -247,6 +250,84 @@ export default function ComparisonView() {
 
     setDiffLinesA(newDiffLinesA);
     setDiffLinesB(newDiffLinesB);
+  };
+
+  const sortObjectsByKey = (obj: any): any => {
+    if (Array.isArray(obj)) {
+      return obj.map(sortObjectsByKey);
+    } else if (obj !== null && typeof obj === 'object') {
+      return Object.keys(obj)
+        .sort()
+        .reduce((result, key) => {
+          result[key] = sortObjectsByKey(obj[key]);
+          return result;
+        }, {} as any);
+    }
+    return obj;
+  };
+
+  const handleCompareWithOptions = () => {
+    if (ignoreKeyOrder && parsedJsonA && parsedJsonB) {
+      const sortedA = sortObjectsByKey(parsedJsonA);
+      const sortedB = sortObjectsByKey(parsedJsonB);
+
+      // Compare sorted versions
+      const stringA = JSON.stringify(sortedA, null, 2);
+      const stringB = JSON.stringify(sortedB, null, 2);
+
+      if (stringA === stringB) {
+        alert('✓ JSONs are identical when ignoring key order');
+        setHasCompared(true);
+        setDiffLinesA([]);
+        setDiffLinesB([]);
+        return;
+      }
+    }
+
+    handleCompare();
+  };
+
+  const exportDiffReport = () => {
+    const timestamp = new Date().toLocaleString();
+    let report = `JSON Comparison Report\n`;
+    report += `Generated: ${timestamp}\n`;
+    report += `=${'='.repeat(60)}\n\n`;
+
+    report += `Comparison Settings:\n`;
+    report += `- Ignore Key Order: ${ignoreKeyOrder ? 'Yes' : 'No'}\n`;
+    report += `- Unified Diff Mode: ${unifiedDiffMode ? 'Yes' : 'No'}\n`;
+    report += `- Total Differences: ${diffLinesA.filter(l => l.type !== 'unchanged').length}\n\n`;
+
+    report += `=${'='.repeat(60)}\n`;
+    report += `SIDE BY SIDE COMPARISON\n`;
+    report += `=${'='.repeat(60)}\n\n`;
+
+    for (let i = 0; i < Math.max(diffLinesA.length, diffLinesB.length); i++) {
+      const lineA = diffLinesA[i];
+      const lineB = diffLinesB[i];
+
+      if (lineA?.type !== 'unchanged' || lineB?.type !== 'unchanged') {
+        report += `Line ${i + 1}:\n`;
+        if (lineA) {
+          report += `  < [${lineA.type.toUpperCase()}] ${lineA.content}\n`;
+        }
+        if (lineB) {
+          report += `  > [${lineB.type.toUpperCase()}] ${lineB.content}\n`;
+        }
+        report += '\n';
+      }
+    }
+
+    // Download as text file
+    const element = document.createElement('a');
+    element.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(report));
+    element.setAttribute('download', `json-diff-report-${Date.now()}.txt`);
+    element.style.display = 'none';
+    document.body.appendChild(element);
+    element.click();
+    document.body.removeChild(element);
+
+    alert('✓ Diff report downloaded!');
   };
 
   // Auto-validate as user types
@@ -535,10 +616,28 @@ export default function ComparisonView() {
                   <ChevronDown className="w-4 h-4" />
                 </button>
               </div>
+
+              {/* Comparison Options */}
+              <div className="flex items-center gap-2 border-l pl-4 border-gray-300 dark:border-gray-600">
+                <button
+                  onClick={() => setShowDiffOptions(!showDiffOptions)}
+                  className="p-1.5 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded transition-colors"
+                  title="Comparison options"
+                >
+                  <Settings2 className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={exportDiffReport}
+                  className="p-1.5 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded transition-colors"
+                  title="Export diff report"
+                >
+                  <FileText className="w-4 h-4" />
+                </button>
+              </div>
             </>
           )}
           <button
-            onClick={handleCompare}
+            onClick={handleCompareWithOptions}
             disabled={!canCompare}
             className="px-4 py-1.5 bg-primary-500 hover:bg-primary-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors text-sm"
             title={!canCompare ? 'Fix JSON errors before comparing' : 'Compare JSON A and B'}
@@ -547,6 +646,30 @@ export default function ComparisonView() {
           </button>
         </div>
       </div>
+
+      {/* Comparison Options Panel */}
+      {showDiffOptions && (
+        <div className="h-12 bg-gray-50 dark:bg-gray-750 border-b border-gray-200 dark:border-gray-700 px-4 flex items-center gap-6">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={unifiedDiffMode}
+              onChange={(e) => setUnifiedDiffMode(e.target.checked)}
+              className="w-4 h-4 rounded border-gray-300 text-primary-600 focus:ring-2 focus:ring-primary-500"
+            />
+            <span className="text-sm text-gray-700 dark:text-gray-300">Unified Diff Mode</span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={ignoreKeyOrder}
+              onChange={(e) => setIgnoreKeyOrder(e.target.checked)}
+              className="w-4 h-4 rounded border-gray-300 text-primary-600 focus:ring-2 focus:ring-primary-500"
+            />
+            <span className="text-sm text-gray-700 dark:text-gray-300">Ignore Key Order</span>
+          </label>
+        </div>
+      )}
 
       <div ref={containerRef} className="flex-1 flex overflow-hidden relative">
         {/* JSON A */}

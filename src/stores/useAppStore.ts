@@ -4,9 +4,6 @@ import type {
   Tab,
   ViewMode,
   SyntaxTheme,
-  Snapshot,
-  Comment,
-  Bookmark,
   RecentFile,
   JSONValue,
 } from '@/types';
@@ -46,23 +43,6 @@ interface AppState {
   redo: () => void;
   canUndo: () => boolean;
   canRedo: () => boolean;
-
-  // Snapshots
-  snapshots: Snapshot[];
-  addSnapshot: (content: JSONValue, label?: string) => void;
-  restoreSnapshot: (id: string) => void;
-  deleteSnapshot: (id: string) => void;
-
-  // Comments
-  comments: Comment[];
-  addComment: (path: string, text: string) => void;
-  deleteComment: (id: string) => void;
-  getCommentsByPath: (path: string) => Comment[];
-
-  // Bookmarks
-  bookmarks: Bookmark[];
-  addBookmark: (path: string, label: string) => void;
-  removeBookmark: (id: string) => void;
 
   // Recent Files
   recentFiles: RecentFile[];
@@ -239,72 +219,6 @@ export const useAppStore = create<AppState>()(
       canUndo: () => get().historyIndex > 0,
       canRedo: () => get().historyIndex < get().history.length - 1,
 
-      // Snapshots
-      snapshots: [],
-      addSnapshot: (content, label) => {
-        const snapshot: Snapshot = {
-          id: generateId(),
-          timestamp: Date.now(),
-          content,
-          label,
-        };
-        set((state) => ({
-          snapshots: [...state.snapshots, snapshot],
-        }));
-      },
-      restoreSnapshot: (id) => {
-        const state = get();
-        const snapshot = state.snapshots.find((s) => s.id === id);
-        if (snapshot && state.activeTabId) {
-          state.updateTabContent(state.activeTabId, snapshot.content);
-        }
-      },
-      deleteSnapshot: (id) => {
-        set((state) => ({
-          snapshots: state.snapshots.filter((s) => s.id !== id),
-        }));
-      },
-
-      // Comments
-      comments: [],
-      addComment: (path, text) => {
-        const comment: Comment = {
-          id: generateId(),
-          path,
-          text,
-          timestamp: Date.now(),
-        };
-        set((state) => ({
-          comments: [...state.comments, comment],
-        }));
-      },
-      deleteComment: (id) => {
-        set((state) => ({
-          comments: state.comments.filter((c) => c.id !== id),
-        }));
-      },
-      getCommentsByPath: (path) => {
-        return get().comments.filter((c) => c.path === path);
-      },
-
-      // Bookmarks
-      bookmarks: [],
-      addBookmark: (path, label) => {
-        const bookmark: Bookmark = {
-          id: generateId(),
-          path,
-          label,
-        };
-        set((state) => ({
-          bookmarks: [...state.bookmarks, bookmark],
-        }));
-      },
-      removeBookmark: (id) => {
-        set((state) => ({
-          bookmarks: state.bookmarks.filter((b) => b.id !== id),
-        }));
-      },
-
       // Recent Files
       recentFiles: [],
       addRecentFile: (name, content) => {
@@ -354,10 +268,7 @@ export const useAppStore = create<AppState>()(
         syntaxTheme: state.syntaxTheme,
         tabs: state.tabs,
         activeTabId: state.activeTabId,
-        bookmarks: state.bookmarks,
         recentFiles: state.recentFiles,
-        snapshots: state.snapshots,
-        comments: state.comments,
         indentation: state.indentation,
         maskSensitiveData: state.maskSensitiveData,
       }),

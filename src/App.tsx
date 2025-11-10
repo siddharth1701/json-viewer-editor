@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useAppStore } from './stores/useAppStore';
 import Navbar from './components/Layout/Navbar';
 import LeftSidebar from './components/Layout/LeftSidebar';
@@ -6,19 +6,29 @@ import RightSidebar from './components/Layout/RightSidebar';
 import MainContent from './components/Layout/MainContent';
 import StatusBar from './components/Layout/StatusBar';
 import ErrorBoundary from './components/ErrorBoundary';
+import GuidedTourModal from './components/Modals/GuidedTourModal';
 
 function App() {
   const isDarkMode = useAppStore((state) => state.isDarkMode);
   const tabs = useAppStore((state) => state.tabs);
   const addTab = useAppStore((state) => state.addTab);
   const setActiveTab = useAppStore((state) => state.setActiveTab);
+  const [showGuidedTour, setShowGuidedTour] = useState(false);
 
-  // Initialize active tab on mount
+  // Initialize active tab on mount and show tour if first time
   useEffect(() => {
     if (tabs.length > 0 && !useAppStore.getState().activeTabId) {
       setActiveTab(tabs[0].id);
     } else if (tabs.length === 0) {
       addTab();
+    }
+
+    // Check if user has seen the tour
+    const hasSeenTour = localStorage.getItem('json-viewer-seen-tour') === 'true';
+    if (!hasSeenTour) {
+      // Show tour after a short delay to let UI render
+      const timer = setTimeout(() => setShowGuidedTour(true), 500);
+      return () => clearTimeout(timer);
     }
   }, []);
 
@@ -70,6 +80,7 @@ function App() {
           <RightSidebar />
         </div>
         <StatusBar />
+        <GuidedTourModal isOpen={showGuidedTour} onClose={() => setShowGuidedTour(false)} />
       </div>
     </ErrorBoundary>
   );

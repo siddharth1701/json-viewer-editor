@@ -17,6 +17,12 @@ interface TextSearchResult {
   matches: number;
 }
 
+interface FindReplaceOptions {
+  useRegex: boolean;
+  replaceAll: boolean;
+  replaceValue: string;
+}
+
 export default function SearchModal({ isOpen, onClose }: SearchModalProps) {
   const [searchMode, setSearchMode] = useState<SearchMode>('text');
   const [query, setQuery] = useState('');
@@ -24,9 +30,14 @@ export default function SearchModal({ isOpen, onClose }: SearchModalProps) {
   const [textResults, setTextResults] = useState<TextSearchResult[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [caseSensitive, setCaseSensitive] = useState(false);
+  const [useRegex, setUseRegex] = useState(false);
+  const [showReplace, setShowReplace] = useState(false);
+  const [replaceValue, setReplaceValue] = useState('');
+  const [replacementCount, setReplacementCount] = useState(0);
 
   const activeTabId = useAppStore((state) => state.activeTabId);
   const tabs = useAppStore((state) => state.tabs);
+  const updateTabContent = useAppStore((state) => state.updateTabContent);
 
   const activeTab = tabs.find((tab) => tab.id === activeTabId);
 
@@ -40,13 +51,23 @@ export default function SearchModal({ isOpen, onClose }: SearchModalProps) {
       setError(null);
       const jsonString = JSON.stringify(activeTab.content, null, 2);
       const lines = jsonString.split('\n');
-      const searchTerm = caseSensitive ? query : query.toLowerCase();
       const foundLines: TextSearchResult[] = [];
 
+      let searchRegex: RegExp;
+      try {
+        if (useRegex) {
+          searchRegex = new RegExp(query, caseSensitive ? 'g' : 'gi');
+        } else {
+          const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          searchRegex = new RegExp(escapedQuery, caseSensitive ? 'g' : 'gi');
+        }
+      } catch (regexErr) {
+        throw new Error(`Invalid regex: ${(regexErr as Error).message}`);
+      }
+
       lines.forEach((line, index) => {
-        const searchLine = caseSensitive ? line : line.toLowerCase();
-        if (searchLine.includes(searchTerm)) {
-          const matches = (searchLine.match(new RegExp(searchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')) || []).length;
+        const matches = (line.match(searchRegex) || []).length;
+        if (matches > 0) {
           foundLines.push({
             line: index + 1,
             content: line,
@@ -64,6 +85,52 @@ export default function SearchModal({ isOpen, onClose }: SearchModalProps) {
     } catch (err) {
       setError(`Search error: ${(err as Error).message}`);
       setTextResults([]);
+    }
+  };
+
+  const handleFindReplace = () => {
+    if (!query.trim() || !activeTab?.content || !activeTabId) {
+      setError('Please enter a search query');
+      return;
+    }
+
+    try {
+      setError(null);
+      let jsonString = JSON.stringify(activeTab.content, null, 2);
+      let replacementOccurrences = 0;
+
+      try {
+        if (useRegex) {
+          const searchRegex = new RegExp(query, caseSensitive ? 'g' : 'gi');
+          const beforeReplace = (jsonString.match(searchRegex) || []).length;
+          jsonString = jsonString.replace(searchRegex, replaceValue);
+          replacementOccurrences = beforeReplace;
+        } else {
+          const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          const searchRegex = new RegExp(escapedQuery, caseSensitive ? 'g' : 'gi');
+          const beforeReplace = (jsonString.match(searchRegex) || []).length;
+          jsonString = jsonString.replace(searchRegex, replaceValue);
+          replacementOccurrences = beforeReplace;
+        }
+
+        // Parse and update
+        const updatedContent = JSON.parse(jsonString);
+        updateTabContent(activeTabId, updatedContent);
+        setReplacementCount(replacementOccurrences);
+        setTextResults([]);
+        setResults([]);
+
+        if (replacementOccurrences > 0) {
+          setError(null);
+          alert(`Replaced ${replacementOccurrences} occurrence(s)`);
+        } else {
+          setError('No matches found to replace');
+        }
+      } catch (regexErr) {
+        throw new Error(`Invalid regex or JSON: ${(regexErr as Error).message}`);
+      }
+    } catch (err) {
+      setError(`Replace error: ${(err as Error).message}`);
     }
   };
 
@@ -109,7 +176,7 @@ export default function SearchModal({ isOpen, onClose }: SearchModalProps) {
 
   // Real-time search for text mode
   useEffect(() => {
-    if (searchMode === 'text' && query.trim()) {
+    if (searchMode === 'text' && query.trim() && !showReplace) {
       const timeoutId = setTimeout(() => {
         handleTextSearch();
       }, 300); // Debounce by 300ms
@@ -120,7 +187,7 @@ export default function SearchModal({ isOpen, onClose }: SearchModalProps) {
       setResults([]);
       setError(null);
     }
-  }, [query, caseSensitive, searchMode, activeTab?.content]);
+  }, [query, caseSensitive, useRegex, searchMode, activeTab?.content, showReplace]);
 
   const handleLineClick = (lineNumber: number) => {
     // This would scroll to the line in the JSON viewer
@@ -226,16 +293,63 @@ export default function SearchModal({ isOpen, onClose }: SearchModalProps) {
 
             {/* Text Search Options */}
             {searchMode === 'text' && (
-              <div className="mt-3 flex items-center gap-4">
-                <label className="flex items-center gap-2 text-sm cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={caseSensitive}
-                    onChange={(e) => setCaseSensitive(e.target.checked)}
-                    className="rounded border-gray-300 dark:border-gray-600"
-                  />
-                  <span className="text-gray-700 dark:text-gray-300">Case sensitive</span>
-                </label>
+              <div className="mt-4 space-y-4">
+                <div className="flex items-center gap-4 flex-wrap">
+                  <label className="flex items-center gap-2 text-sm cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={caseSensitive}
+                      onChange={(e) => setCaseSensitive(e.target.checked)}
+                      className="rounded border-gray-300 dark:border-gray-600"
+                    />
+                    <span className="text-gray-700 dark:text-gray-300">Case sensitive</span>
+                  </label>
+                  <label className="flex items-center gap-2 text-sm cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={useRegex}
+                      onChange={(e) => setUseRegex(e.target.checked)}
+                      className="rounded border-gray-300 dark:border-gray-600"
+                    />
+                    <span className="text-gray-700 dark:text-gray-300">Use regex</span>
+                  </label>
+                  <button
+                    onClick={() => setShowReplace(!showReplace)}
+                    className="px-3 py-1 text-xs font-medium bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors"
+                  >
+                    {showReplace ? 'Hide Replace' : 'Find & Replace'}
+                  </button>
+                </div>
+
+                {/* Find & Replace UI */}
+                {showReplace && (
+                  <div className="p-4 bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800 rounded-lg space-y-3">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Replace with:
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Enter replacement text..."
+                        value={replaceValue}
+                        onChange={(e) => setReplaceValue(e.target.value)}
+                        className="w-full p-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                      />
+                    </div>
+                    <button
+                      onClick={handleFindReplace}
+                      disabled={!query.trim()}
+                      className="w-full px-4 py-2 bg-blue-500 hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors text-sm"
+                    >
+                      Replace All
+                    </button>
+                    {replacementCount > 0 && (
+                      <div className="p-2 bg-green-100 dark:bg-green-900/30 border border-green-200 dark:border-green-800 rounded text-green-700 dark:text-green-300 text-sm">
+                        ✓ Replaced {replacementCount} occurrence(s)
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
