@@ -54,10 +54,6 @@ interface AppState {
   maskSensitiveData: boolean;
   toggleMaskSensitiveData: () => void;
 
-  // Modal States
-  showCodeGenerationModal: boolean;
-  setShowCodeGenerationModal: (show: boolean) => void;
-
   // Clear all data
   clearAllData: () => void;
 }
@@ -289,10 +285,6 @@ export const useAppStore = create<AppState>()(
       maskSensitiveData: false,
       toggleMaskSensitiveData: () =>
         set((state) => ({ maskSensitiveData: !state.maskSensitiveData })),
-
-      // Modal States
-      showCodeGenerationModal: false,
-      setShowCodeGenerationModal: (show) => set({ showCodeGenerationModal: show }),
 
       // Clear all data
       clearAllData: () => {

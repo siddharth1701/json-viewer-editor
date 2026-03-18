@@ -1,7 +1,7 @@
 import { useRef, useState, useEffect } from 'react';
 import {
   Moon, Sun, Upload, Download, Copy, Trash2,
-  Undo2, Redo2, Search, Code2, FileJson,
+  Undo2, Redo2, Search, FileJson,
   GitCompare, Settings, HelpCircle, Database, Activity, Maximize, Minimize, Eye, EyeOff
 } from 'lucide-react';
 import { toggleFullscreen, isCurrentlyFullscreen } from '@/utils/fullscreenUtils';
@@ -176,14 +176,6 @@ export default function Navbar() {
           <Database className="w-5 h-5" />
         </button>
 
-        <button
-          onClick={() => useAppStore.setState({ showCodeGenerationModal: true })}
-          className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
-          title="Generate Code"
-          aria-label="Generate code"
-        >
-          <Code2 className="w-5 h-5" />
-        </button>
       </div>
 
       {/* Right Actions */}

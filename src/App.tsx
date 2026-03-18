@@ -9,15 +9,12 @@ import MainContent from './components/Layout/MainContent';
 import StatusBar from './components/Layout/StatusBar';
 import ErrorBoundary from './components/ErrorBoundary';
 import GuidedTourModal from './components/Modals/GuidedTourModal';
-import CodeGenerationModal from './components/Modals/CodeGenerationModal';
 
 function App() {
   const isDarkMode = useAppStore((state) => state.isDarkMode);
   const tabs = useAppStore((state) => state.tabs);
   const addTab = useAppStore((state) => state.addTab);
   const setActiveTab = useAppStore((state) => state.setActiveTab);
-  const showCodeGenerationModal = useAppStore((state) => state.showCodeGenerationModal);
-  const setShowCodeGenerationModal = useAppStore((state) => state.setShowCodeGenerationModal);
   const { downloadJson } = useJsonActions();
   const [showGuidedTour, setShowGuidedTour] = useState(false);
 
@@ -87,10 +84,6 @@ function App() {
         </div>
         <StatusBar />
         <GuidedTourModal isOpen={showGuidedTour} onClose={() => setShowGuidedTour(false)} />
-        <CodeGenerationModal
-          isOpen={showCodeGenerationModal}
-          onClose={() => setShowCodeGenerationModal(false)}
-        />
         <Toaster
           position="bottom-right"
           reverseOrder={false}
