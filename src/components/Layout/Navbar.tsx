@@ -115,6 +115,13 @@ export default function Navbar() {
     }
   };
 
+  const handleClearTab = () => {
+    if (activeTabId) {
+      updateTabContent(activeTabId, null);
+      showSuccessToast('Tab cleared');
+    }
+  };
+
   return (
     <nav className="h-14 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex items-center px-4 gap-4 no-print">
       {/* Logo */}
@@ -230,6 +237,16 @@ export default function Navbar() {
           aria-label="Copy to clipboard"
         >
           <Copy className="w-5 h-5" />
+        </button>
+
+        <button
+          onClick={handleClearTab}
+          disabled={!hasContent}
+          className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+          title="Clear current tab"
+          aria-label="Clear tab"
+        >
+          <Trash2 className="w-5 h-5" />
         </button>
 
         <button
