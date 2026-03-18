@@ -3,7 +3,7 @@ import { Search, X } from 'lucide-react';
 import { JSONPath } from 'jsonpath-plus';
 import { useAppStore } from '@/stores/useAppStore';
 import type { JSONValue } from '@/types';
-import { showSuccessToast } from '@/utils/toast';
+import { showSuccessToast, showInfoToast } from '@/utils/toast';
 
 interface SearchModalProps {
   isOpen: boolean;
@@ -191,11 +191,9 @@ export default function SearchModal({ isOpen, onClose }: SearchModalProps) {
   }, [query, caseSensitive, useRegex, searchMode, activeTab?.content, showReplace]);
 
   const handleLineClick = (lineNumber: number) => {
-    // This would scroll to the line in the JSON viewer
-    // For now, we'll just show a notification
-    // In a full implementation, you'd need to pass a callback or use a store
-    console.log('Navigate to line:', lineNumber);
-    // Close modal and potentially highlight the line
+    // In a full implementation, you'd pass a callback or use a store to highlight the line
+    showInfoToast(`Line ${lineNumber} - Full navigation will be in a future update`);
+    // Close modal
     onClose();
   };
 

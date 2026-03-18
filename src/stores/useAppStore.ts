@@ -296,7 +296,7 @@ export const useAppStore = create<AppState>()(
 
       // Clear all data
       clearAllData: () => {
-        localStorage.clear();
+        localStorage.removeItem('json-viewer-storage');
         window.location.reload();
       },
     }),
