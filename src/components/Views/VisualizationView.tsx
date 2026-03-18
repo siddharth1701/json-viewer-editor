@@ -6,7 +6,7 @@ import type { JSONValue } from '@/types';
 
 interface TreeNode {
   name: string;
-  value?: any;
+  value?: JSONValue;
   type: string;
   children?: TreeNode[];
   _collapsed?: boolean;
@@ -17,9 +17,9 @@ interface TreeNode {
 export default function VisualizationView() {
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const zoomBehaviorRef = useRef<any>(null);
-  const initialTransformRef = useRef<any>(null);
-  const currentTransformRef = useRef<any>(null);
+  const zoomBehaviorRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null);
+  const initialTransformRef = useRef<d3.ZoomTransform | null>(null);
+  const currentTransformRef = useRef<d3.ZoomTransform | null>(null);
   const [zoomLevel, setZoomLevel] = useState(1);
   const [collapsedNodes, setCollapsedNodes] = useState<Set<string>>(new Set());
   const treeDataRef = useRef<TreeNode | null>(null);

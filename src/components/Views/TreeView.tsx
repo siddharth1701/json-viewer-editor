@@ -3,6 +3,31 @@ import { ChevronRight, ChevronDown, Edit, Copy, FileText } from 'lucide-react';
 import { useAppStore } from '@/stores/useAppStore';
 import type { JSONValue } from '@/types';
 import { getValueType } from '@/utils/jsonUtils';
+import { showSuccessToast, showErrorToast } from '@/utils/toast';
+
+// Memoized regex patterns for sensitive data detection
+const SENSITIVE_KEY_PATTERNS = [
+  'password', 'passwd', 'pwd', 'pass',
+  'secret', 'token', 'apikey', 'api_key', 'api-key',
+  'auth', 'authorization', 'bearer',
+  'credential', 'credentials',
+  'key', 'private_key', 'privatekey',
+  'access_token', 'refresh_token',
+  'session', 'sessionid', 'session_id',
+  'jwt', 'oauth',
+  'ssn', 'social_security',
+  'cc', 'credit_card', 'creditcard',
+  'cvv', 'cvc', 'pin'
+];
+
+const SENSITIVE_VALUE_PATTERNS = [
+  /^[A-Za-z0-9\-._~+/]+=*$/, // Base64-like
+  /^[A-Za-z0-9]{32,}$/, // Long hex/alphanumeric (API keys)
+  /^sk_[a-z0-9]+$/, // Stripe-like keys
+  /^pk_[a-z0-9]+$/,
+  /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/, // Email
+  /^Bearer\s+[A-Za-z0-9\-._~+/]+=*$/, // Bearer token
+];
 
 interface TreeNodeProps {
   nodeKey: string;
@@ -16,28 +41,40 @@ const TreeNode = memo(({ nodeKey, value, path, depth }: TreeNodeProps) => {
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState('');
   const updateTabContent = useAppStore((state) => state.updateTabContent);
+  const pushHistory = useAppStore((state) => state.pushHistory);
   const activeTabId = useAppStore((state) => state.activeTabId);
   const tabs = useAppStore((state) => state.tabs);
+  const maskSensitiveData = useAppStore((state) => state.maskSensitiveData);
   const type = getValueType(value);
   const isExpandable = type === 'object' || type === 'array';
 
   const activeTab = tabs.find((tab) => tab.id === activeTabId);
 
+  // Detect sensitive data patterns using memoized patterns
+  const isSensitiveKey = (key: string): boolean => {
+    return SENSITIVE_KEY_PATTERNS.some(keyword => key.toLowerCase().includes(keyword));
+  };
+
+  const isSensitiveValue = (val: JSONValue): boolean => {
+    if (typeof val !== 'string') return false;
+    return SENSITIVE_VALUE_PATTERNS.some(pattern => pattern.test(val));
+  };
+
   const handleCopyValue = () => {
     const valueStr = JSON.stringify(value, null, 2);
     navigator.clipboard.writeText(valueStr);
-    alert('Value copied to clipboard!');
+    showSuccessToast('Value copied to clipboard!');
   };
 
   const handleCopyKeyValue = () => {
     const keyValueStr = `"${nodeKey}": ${JSON.stringify(value, null, 2)}`;
     navigator.clipboard.writeText(keyValueStr);
-    alert('Key and value copied to clipboard!');
+    showSuccessToast('Key and value copied to clipboard!');
   };
 
   const handleEdit = () => {
     if (isExpandable) {
-      alert('Cannot edit objects or arrays inline. Please use the Code view for complex edits.');
+      showErrorToast('Cannot edit objects or arrays inline. Please use the Code view for complex edits.');
       return;
     }
     setEditValue(type === 'string' ? String(value) : JSON.stringify(value));
@@ -56,7 +93,7 @@ const TreeNode = memo(({ nodeKey, value, path, depth }: TreeNodeProps) => {
       } else if (type === 'number') {
         newValue = parseFloat(editValue);
         if (isNaN(newValue)) {
-          alert('Invalid number format');
+          showErrorToast('Invalid number format');
           return;
         }
       } else if (type === 'boolean') {
@@ -65,12 +102,12 @@ const TreeNode = memo(({ nodeKey, value, path, depth }: TreeNodeProps) => {
         } else if (editValue.toLowerCase() === 'false') {
           newValue = false;
         } else {
-          alert('Boolean must be "true" or "false"');
+          showErrorToast('Boolean must be "true" or "false"');
           return;
         }
       } else if (type === 'null') {
         if (editValue.toLowerCase() !== 'null') {
-          alert('Null value must be "null"');
+          showErrorToast('Null value must be "null"');
           return;
         }
         newValue = null;
@@ -79,7 +116,7 @@ const TreeNode = memo(({ nodeKey, value, path, depth }: TreeNodeProps) => {
       }
 
       // Update the value in the JSON tree
-      const updateNestedValue = (obj: any, pathArray: string[], newVal: JSONValue): any => {
+      const updateNestedValue = (obj: JSONValue, pathArray: string[], newVal: JSONValue): JSONValue => {
         if (pathArray.length === 0) return newVal;
 
         const [current, ...rest] = pathArray;
@@ -89,20 +126,22 @@ const TreeNode = memo(({ nodeKey, value, path, depth }: TreeNodeProps) => {
           const newArr = [...obj];
           newArr[index] = rest.length === 0 ? newVal : updateNestedValue(obj[index], rest, newVal);
           return newArr;
-        } else {
+        } else if (typeof obj === 'object' && obj !== null) {
           return {
             ...obj,
-            [current]: rest.length === 0 ? newVal : updateNestedValue(obj[current], rest, newVal),
+            [current]: rest.length === 0 ? newVal : updateNestedValue((obj as Record<string, JSONValue>)[current], rest, newVal),
           };
         }
+        return obj;
       };
 
       const updatedContent = updateNestedValue(activeTab.content, path, newValue);
+      pushHistory(activeTabId, activeTab.content);
       updateTabContent(activeTabId, updatedContent);
       setIsEditing(false);
-      alert('Value updated successfully!');
+      showSuccessToast('Value updated successfully!');
     } catch (err) {
-      alert(`Invalid value: ${(err as Error).message}`);
+      showErrorToast(`Invalid value: ${(err as Error).message}`);
     }
   };
 
@@ -139,8 +178,12 @@ const TreeNode = memo(({ nodeKey, value, path, depth }: TreeNodeProps) => {
   };
 
   const renderValue = () => {
-    if (type === 'string')
-      return <span className={`${getTypeColor(type)} break-words`}>"{String(value)}"</span>;
+    const shouldMask = maskSensitiveData && (isSensitiveKey(nodeKey) || isSensitiveValue(value));
+
+    if (type === 'string') {
+      const displayValue = shouldMask ? '•••••••' : String(value);
+      return <span className={`${getTypeColor(type)} break-words`}>"{displayValue}"</span>;
+    }
     if (type === 'number' || type === 'boolean')
       return <span className={`${getTypeColor(type)} break-words`}>{String(value)}</span>;
     if (type === 'null') return <span className={`${getTypeColor(type)} break-words`}>null</span>;

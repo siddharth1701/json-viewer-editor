@@ -1,3 +1,6 @@
+import { countNodes, getMaxDepth } from './treeTraversal';
+import type { JSONValue } from '@/types';
+
 export interface PerformanceMetrics {
   renderTime: number; // milliseconds
   memoryUsage: number | null; // bytes, null if not available
@@ -15,7 +18,7 @@ export class PerformanceMonitor {
    */
   static startRender(): void {
     this.startTime = performance.now();
-    const perfObj = performance as any;
+    const perfObj = performance as Performance & { memory?: { usedJSHeapSize: number } };
     if (perfObj.memory) {
       this.startMemory = perfObj.memory.usedJSHeapSize;
     }
@@ -32,7 +35,7 @@ export class PerformanceMonitor {
    * Get current memory usage (if available)
    */
   static getMemoryUsage(): number | null {
-    const perfObj = performance as any;
+    const perfObj = performance as Performance & { memory?: { usedJSHeapSize: number } };
     if (perfObj.memory) {
       return perfObj.memory.usedJSHeapSize;
     }
@@ -43,7 +46,7 @@ export class PerformanceMonitor {
    * Get memory delta (difference from start)
    */
   static getMemoryDelta(): number | null {
-    const perfObj = performance as any;
+    const perfObj = performance as Performance & { memory?: { usedJSHeapSize: number } };
     if (perfObj.memory && this.startMemory !== null) {
       return perfObj.memory.usedJSHeapSize - this.startMemory;
     }
@@ -53,47 +56,21 @@ export class PerformanceMonitor {
   /**
    * Count nodes in JSON structure
    */
-  static countNodes(obj: any): number {
-    let count = 0;
-
-    const traverse = (item: any) => {
-      count++;
-
-      if (Array.isArray(item)) {
-        item.forEach(traverse);
-      } else if (item !== null && typeof item === 'object') {
-        Object.values(item).forEach(traverse);
-      }
-    };
-
-    traverse(obj);
-    return count;
+  static countNodes(obj: unknown): number {
+    return countNodes(obj as JSONValue);
   }
 
   /**
    * Calculate max depth of JSON structure
    */
-  static calculateDepth(obj: any): number {
-    let maxDepth = 0;
-
-    const traverse = (item: any, depth: number) => {
-      maxDepth = Math.max(maxDepth, depth);
-
-      if (Array.isArray(item)) {
-        item.forEach((child) => traverse(child, depth + 1));
-      } else if (item !== null && typeof item === 'object') {
-        Object.values(item).forEach((child) => traverse(child, depth + 1));
-      }
-    };
-
-    traverse(obj, 1);
-    return maxDepth;
+  static calculateDepth(obj: unknown): number {
+    return getMaxDepth(obj as JSONValue);
   }
 
   /**
    * Get comprehensive performance metrics for JSON data
    */
-  static getMetrics(jsonData: any): PerformanceMetrics {
+  static getMetrics(jsonData: unknown): PerformanceMetrics {
     const renderTime = this.endRender();
     const memoryUsage = this.getMemoryUsage();
     const jsonString = JSON.stringify(jsonData);

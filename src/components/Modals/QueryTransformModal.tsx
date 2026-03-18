@@ -1,12 +1,23 @@
 import { useState } from 'react';
 import { X, Copy, Download } from 'lucide-react';
 import { useAppStore } from '@/stores/useAppStore';
+import type { JSONValue } from '@/types';
 
 interface QueryResult {
   success: boolean;
-  data?: any;
+  data?: JSONValue | JsonSchema;
   error?: string;
   paths?: string[];
+}
+
+interface JsonSchema {
+  type: string;
+  items?: JsonSchema;
+  properties?: Record<string, JsonSchema>;
+  required?: string[];
+  additionalProperties?: boolean;
+  minItems?: number;
+  maxItems?: number;
 }
 
 export default function QueryTransformModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
@@ -21,7 +32,7 @@ export default function QueryTransformModal({ isOpen, onClose }: { isOpen: boole
   const jsonData = activeTabData?.content;
 
   // Simple JSONPath implementation
-  const evaluateJsonPath = (data: any, path: string): QueryResult => {
+  const evaluateJsonPath = (data: JSONValue, path: string): QueryResult => {
     try {
       if (!path.trim()) {
         return { success: false, error: 'JSONPath query cannot be empty' };
@@ -33,7 +44,7 @@ export default function QueryTransformModal({ isOpen, onClose }: { isOpen: boole
       }
 
       // Simple JSONPath parser for basic paths like $.key, $.key.subkey, $.array[0], etc.
-      let current = data;
+      let current: JSONValue = data;
       const pathSegments = path.replace(/^\$\.?/, '').split('.');
       const matchedPaths: string[] = [];
 
@@ -82,7 +93,7 @@ export default function QueryTransformModal({ isOpen, onClose }: { isOpen: boole
   };
 
   // Generate JSON Schema
-  const generateJsonSchema = (data: any): any => {
+  const generateJsonSchema = (data: JSONValue): JsonSchema => {
     if (data === null) {
       return { type: 'null' };
     }
@@ -90,14 +101,14 @@ export default function QueryTransformModal({ isOpen, onClose }: { isOpen: boole
     if (Array.isArray(data)) {
       return {
         type: 'array',
-        items: data.length > 0 ? generateJsonSchema(data[0]) : {},
+        items: data.length > 0 ? generateJsonSchema(data[0]) : { type: 'unknown' },
         minItems: 0,
         maxItems: data.length
       };
     }
 
     if (typeof data === 'object') {
-      const properties: any = {};
+      const properties: Record<string, JsonSchema> = {};
       const required: string[] = [];
 
       for (const key in data) {

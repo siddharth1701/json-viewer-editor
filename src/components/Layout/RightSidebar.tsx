@@ -7,6 +7,8 @@ import {
 } from 'lucide-react';
 import { useAppStore } from '@/stores/useAppStore';
 import { useJsonActions } from '@/hooks/useJsonActions';
+import { showSuccessToast, showErrorToast } from '@/utils/toast';
+import type { JSONValue } from '@/types';
 
 type ToolTab = 'convert' | 'generate' | 'transform';
 type ConvertFormat = 'yaml' | 'xml' | 'csv' | 'toml';
@@ -18,6 +20,7 @@ export default function RightSidebar() {
   const activeTabId = useAppStore((state) => state.activeTabId);
   const tabs = useAppStore((state) => state.tabs);
   const updateTabContent = useAppStore((state) => state.updateTabContent);
+  const pushHistory = useAppStore((state) => state.pushHistory);
 
   const [activeToolTab, setActiveToolTab] = useState<ToolTab>('convert');
 
@@ -26,87 +29,92 @@ export default function RightSidebar() {
 
   const handleConvert = async (format: ConvertFormat) => {
     if (!hasContent) {
-      alert('Please load some JSON first');
+      showErrorToast('Please load some JSON first');
       return;
     }
 
     try {
       await exportAs(format);
-      alert(`Exported as ${format.toUpperCase()}! Check your downloads.`);
+      showSuccessToast(`Exported as ${format.toUpperCase()}! Check your downloads.`);
     } catch (err) {
-      alert(`Failed to convert: ${(err as Error).message}`);
+      showErrorToast(`Failed to convert: ${(err as Error).message}`);
     }
   };
 
   const handleGenerate = async (language: GenerateLanguage) => {
     if (!hasContent) {
-      alert('Please load some JSON first');
+      showErrorToast('Please load some JSON first');
       return;
     }
 
-    try {
-      await exportAs(language as any);
-      alert(`Generated ${language} code! Check your downloads.`);
-    } catch (err) {
-      alert(`Failed to generate: ${(err as Error).message}`);
-    }
+    // Open the code generation modal
+    useAppStore.setState({ showCodeGenerationModal: true });
   };
 
   const handleFlattenStructure = () => {
     if (!activeTab?.content || !activeTabId) {
-      alert('Please load some JSON first');
+      showErrorToast('Please load some JSON first');
       return;
     }
 
     try {
-      const flatten = (obj: any, prefix = ''): any => {
-        return Object.keys(obj).reduce((acc: any, key: string) => {
+      const flatten = (obj: JSONValue, prefix = ''): Record<string, JSONValue> => {
+        if (typeof obj !== 'object' || obj === null || Array.isArray(obj)) {
+          return {};
+        }
+        return Object.keys(obj).reduce((acc: Record<string, JSONValue>, key: string) => {
           const newKey = prefix ? `${prefix}.${key}` : key;
-          if (typeof obj[key] === 'object' && obj[key] !== null && !Array.isArray(obj[key])) {
-            Object.assign(acc, flatten(obj[key], newKey));
+          const value = (obj as Record<string, JSONValue>)[key];
+          if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+            Object.assign(acc, flatten(value, newKey));
           } else {
-            acc[newKey] = obj[key];
+            acc[newKey] = value;
           }
           return acc;
         }, {});
       };
 
       const flattened = flatten(activeTab.content);
+      pushHistory(activeTabId, activeTab.content);
       updateTabContent(activeTabId, flattened);
-      alert('JSON structure flattened!');
+      showSuccessToast('JSON structure flattened!');
     } catch (err) {
-      alert(`Failed to flatten: ${(err as Error).message}`);
+      showErrorToast(`Failed to flatten: ${(err as Error).message}`);
     }
   };
 
   const handleUnflattenStructure = () => {
     if (!activeTab?.content || !activeTabId) {
-      alert('Please load some JSON first');
+      showErrorToast('Please load some JSON first');
       return;
     }
 
     try {
-      const unflatten = (data: any): any => {
-        const result: any = {};
+      const unflatten = (data: JSONValue): JSONValue => {
+        if (typeof data !== 'object' || data === null || Array.isArray(data)) {
+          return data;
+        }
+        const result: Record<string, JSONValue> = {};
         for (const key in data) {
           const keys = key.split('.');
-          keys.reduce((acc, k, i) => {
+          keys.reduce((acc: Record<string, JSONValue>, k: string, i: number) => {
             if (i === keys.length - 1) {
-              acc[k] = data[key];
+              acc[k] = (data as Record<string, JSONValue>)[key];
             } else {
               acc[k] = acc[k] || {};
             }
-            return acc[k];
+            return (acc[k] as Record<string, JSONValue>) || {};
           }, result);
         }
         return result;
       };
 
       const unflattened = unflatten(activeTab.content);
+      pushHistory(activeTabId, activeTab.content);
       updateTabContent(activeTabId, unflattened);
-      alert('JSON structure unflattened!');
+      showSuccessToast('JSON structure unflattened!');
     } catch (err) {
-      alert(`Failed to unflatten: ${(err as Error).message}`);
+      showErrorToast(`Failed to unflatten: ${(err as Error).message}`);
     }
   };
 

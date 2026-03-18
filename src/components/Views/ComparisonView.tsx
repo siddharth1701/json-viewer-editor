@@ -2,6 +2,9 @@ import { useState, useEffect, useRef } from 'react';
 import { Upload, Link as LinkIcon, ChevronUp, ChevronDown, Settings2, FileText } from 'lucide-react';
 import { useAppStore } from '@/stores/useAppStore';
 import { validateJSON } from '@/utils/jsonUtils';
+import { showSuccessToast, showErrorToast, showInfoToast, showLoadingToast, dismissToast } from '@/utils/toast';
+import { validateFileSize, validateJSONSize } from '@/utils/validation';
+import type { JSONValue } from '@/types';
 
 interface DiffLine {
   type: 'unchanged' | 'added' | 'removed' | 'modified';
@@ -164,7 +167,7 @@ export default function ComparisonView() {
     const validB = validateAndParseB();
 
     if (!validA || !validB) {
-      alert('Please fix the JSON errors before comparing');
+      showErrorToast('Please fix the JSON errors before comparing');
       return;
     }
 
@@ -252,16 +255,16 @@ export default function ComparisonView() {
     setDiffLinesB(newDiffLinesB);
   };
 
-  const sortObjectsByKey = (obj: any): any => {
+  const sortObjectsByKey = (obj: JSONValue): JSONValue => {
     if (Array.isArray(obj)) {
       return obj.map(sortObjectsByKey);
     } else if (obj !== null && typeof obj === 'object') {
       return Object.keys(obj)
         .sort()
-        .reduce((result, key) => {
-          result[key] = sortObjectsByKey(obj[key]);
+        .reduce((result: Record<string, JSONValue>, key) => {
+          result[key] = sortObjectsByKey((obj as Record<string, JSONValue>)[key]);
           return result;
-        }, {} as any);
+        }, {} as Record<string, JSONValue>);
     }
     return obj;
   };
@@ -276,7 +279,7 @@ export default function ComparisonView() {
       const stringB = JSON.stringify(sortedB, null, 2);
 
       if (stringA === stringB) {
-        alert('✓ JSONs are identical when ignoring key order');
+        showInfoToast('✓ JSONs are identical when ignoring key order');
         setHasCompared(true);
         setDiffLinesA([]);
         setDiffLinesB([]);
@@ -327,7 +330,7 @@ export default function ComparisonView() {
     element.click();
     document.body.removeChild(element);
 
-    alert('✓ Diff report downloaded!');
+    showSuccessToast('✓ Diff report downloaded!');
   };
 
   // Auto-validate as user types
@@ -394,9 +397,46 @@ export default function ComparisonView() {
     const url = prompt('Enter JSON URL:');
     if (!url) return;
 
+    const toastId = showLoadingToast('Loading JSON from URL...');
+
     try {
-      const response = await fetch(url);
+      // Validate URL format
+      try {
+        new URL(url);
+      } catch {
+        dismissToast(toastId);
+        showErrorToast('Invalid URL format');
+        return;
+      }
+
+      const response = await fetch(url, {
+        headers: { 'Accept': 'application/json' },
+        timeout: 30000, // 30 second timeout
+      } as RequestInit);
+
+      if (!response.ok) {
+        dismissToast(toastId);
+        showErrorToast(`Failed to load URL: HTTP ${response.status} ${response.statusText}`);
+        return;
+      }
+
+      const contentType = response.headers.get('content-type');
+      if (!contentType?.includes('application/json')) {
+        dismissToast(toastId);
+        showErrorToast('Response is not valid JSON (invalid content-type)');
+        return;
+      }
+
       const data = await response.json();
+
+      // Validate size before setting
+      const sizeValidation = validateJSONSize(data);
+      if (!sizeValidation.valid) {
+        dismissToast(toastId);
+        showErrorToast(`Failed to load URL: ${sizeValidation.message}`);
+        return;
+      }
+
       const formatted = JSON.stringify(data, null, 2);
 
       if (side === 'A') {
@@ -410,14 +450,28 @@ export default function ComparisonView() {
         setErrorB(null);
         setShowLoadMenuB(false);
       }
+
+      dismissToast(toastId);
+      showSuccessToast('JSON loaded successfully!');
     } catch (err) {
-      alert(`Failed to load JSON from URL: ${(err as Error).message}`);
+      dismissToast(toastId);
+      if (err instanceof TypeError && err.message.includes('Failed to fetch')) {
+        showErrorToast('Failed to load URL - CORS error or network issue');
+      } else {
+        showErrorToast(`Failed to load JSON: ${(err as Error).message}`);
+      }
     }
   };
 
   const handleFileUpload = (side: 'A' | 'B', e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    // Validate file type
+    if (!file.name.endsWith('.json') && !file.name.endsWith('.jsonc')) {
+      showErrorToast('File must be a JSON file (.json or .jsonc)');
+      return;
+    }
 
     const reader = new FileReader();
     reader.onload = (event) => {
@@ -426,6 +480,13 @@ export default function ComparisonView() {
         const result = validateJSON(content);
 
         if (result.valid && result.data) {
+          // Validate JSON size
+          const sizeValidation = validateJSONSize(result.data);
+          if (!sizeValidation.valid) {
+            showErrorToast(`File load failed: ${sizeValidation.message}`);
+            return;
+          }
+
           const formatted = JSON.stringify(result.data, null, 2);
 
           if (side === 'A') {
@@ -439,12 +500,18 @@ export default function ComparisonView() {
             setErrorB(null);
             setShowLoadMenuB(false);
           }
+
+          showSuccessToast(`${file.name} loaded successfully!`);
         } else {
-          alert('Invalid JSON file');
+          showErrorToast(`Invalid JSON in file: ${result.error?.message || 'Unknown error'}`);
         }
-      } catch {
-        alert('Failed to read file');
+      } catch (err) {
+        showErrorToast(`Failed to process file: ${(err as Error).message}`);
       }
+    };
+
+    reader.onerror = (err) => {
+      showErrorToast(`Failed to read file: ${(err as any).name || 'Unknown error'}`);
     };
 
     reader.readAsText(file);
@@ -671,6 +738,62 @@ export default function ComparisonView() {
         </div>
       )}
 
+      {/* Unified Diff View */}
+      {unifiedDiffMode && hasCompared && (
+        <div className="flex-1 overflow-auto">
+          {diffLinesA.map((line, index) => (
+            <div
+              key={`a-${index}`}
+              className={`flex font-mono text-xs leading-relaxed ${
+                line.type === 'added'
+                  ? 'bg-green-50 dark:bg-green-900/20'
+                  : line.type === 'removed'
+                  ? 'bg-red-50 dark:bg-red-900/20'
+                  : line.type === 'modified'
+                  ? 'bg-yellow-50 dark:bg-yellow-900/20'
+                  : ''
+              }`}
+            >
+              <span className="w-12 flex-shrink-0 text-right pr-2 text-gray-500 dark:text-gray-400 select-none border-r border-gray-300 dark:border-gray-600">
+                {line.content ? line.lineNumber : ''}
+              </span>
+              <span className="w-6 flex-shrink-0 text-center font-bold select-none text-red-600 dark:text-red-400">
+                -
+              </span>
+              <span className="flex-1 px-2 whitespace-nowrap overflow-x-auto">
+                <HighlightedText line={line} charDiffs={line.charDiffs} />
+              </span>
+            </div>
+          ))}
+          {diffLinesB.map((line, index) => (
+            <div
+              key={`b-${index}`}
+              className={`flex font-mono text-xs leading-relaxed ${
+                line.type === 'added'
+                  ? 'bg-green-50 dark:bg-green-900/20'
+                  : line.type === 'removed'
+                  ? 'bg-red-50 dark:bg-red-900/20'
+                  : line.type === 'modified'
+                  ? 'bg-yellow-50 dark:bg-yellow-900/20'
+                  : ''
+              }`}
+            >
+              <span className="w-12 flex-shrink-0 text-right pr-2 text-gray-500 dark:text-gray-400 select-none border-r border-gray-300 dark:border-gray-600">
+                {line.content ? line.lineNumber : ''}
+              </span>
+              <span className="w-6 flex-shrink-0 text-center font-bold select-none text-green-600 dark:text-green-400">
+                +
+              </span>
+              <span className="flex-1 px-2 whitespace-nowrap overflow-x-auto">
+                <HighlightedText line={line} charDiffs={line.charDiffs} />
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Side-by-side Diff View */}
+      {!unifiedDiffMode && (
       <div ref={containerRef} className="flex-1 flex overflow-hidden relative">
         {/* JSON A */}
         <div
@@ -848,6 +971,7 @@ export default function ComparisonView() {
           )}
         </div>
       </div>
+      )}
 
       {/* Status Bar */}
       {hasCompared && parsedJsonA && parsedJsonB && (

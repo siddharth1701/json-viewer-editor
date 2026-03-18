@@ -15,6 +15,7 @@ import { useAppStore } from '@/stores/useAppStore';
 import { useJsonActions } from '@/hooks/useJsonActions';
 import SearchModal from '../Modals/SearchModal';
 import type { ViewMode, ExportFormat } from '@/types';
+import { showSuccessToast } from '@/utils/toast';
 
 export default function ViewTabs() {
   const viewMode = useAppStore((state) => state.viewMode);
@@ -89,7 +90,7 @@ export default function ViewTabs() {
         <button
           onClick={() => {
             sortKeysAlphabetically(true);
-            setTimeout(() => alert('JSON keys sorted alphabetically!'), 100);
+            showSuccessToast('JSON keys sorted alphabetically!');
           }}
           disabled={!hasContent}
           className="px-3 py-1.5 text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg flex items-center gap-2 transition-colors"
@@ -101,7 +102,7 @@ export default function ViewTabs() {
         <button
           onClick={async () => {
             await copyToClipboard(true);
-            alert('JSON copied to clipboard!');
+            showSuccessToast('JSON copied to clipboard!');
           }}
           disabled={!hasContent}
           className="px-3 py-1.5 text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg flex items-center gap-2 transition-colors"

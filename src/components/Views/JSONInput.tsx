@@ -93,7 +93,16 @@ export default function JSONInput() {
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     const file = e.dataTransfer.files[0];
-    if (file && file.type === 'application/json') {
+    if (!file) return;
+
+    // Check MIME type or file extension
+    const isJsonMimeType =
+      file.type === 'application/json' ||
+      file.type === 'text/plain' ||
+      file.type === '';
+    const isJsonExtension = file.name.endsWith('.json') || file.name.endsWith('.jsonc');
+
+    if (isJsonMimeType || isJsonExtension) {
       const input = fileInputRef.current;
       if (input) {
         const dataTransfer = new DataTransfer();
@@ -101,6 +110,8 @@ export default function JSONInput() {
         input.files = dataTransfer.files;
         handleFileUpload({ target: input } as any);
       }
+    } else {
+      setError('Please drop a JSON file (.json or .jsonc)');
     }
   };
 

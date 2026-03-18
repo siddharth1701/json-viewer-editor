@@ -2,12 +2,13 @@ import { useRef, useState, useEffect } from 'react';
 import {
   Moon, Sun, Upload, Download, Copy, Trash2,
   Undo2, Redo2, Search, Code2, FileJson,
-  GitCompare, Settings, HelpCircle, Database, Activity, Maximize, Minimize
+  GitCompare, Settings, HelpCircle, Database, Activity, Maximize, Minimize, Eye, EyeOff
 } from 'lucide-react';
 import { toggleFullscreen, isCurrentlyFullscreen } from '@/utils/fullscreenUtils';
 import { useAppStore } from '@/stores/useAppStore';
 import { useJsonActions } from '@/hooks/useJsonActions';
 import { validateJSON } from '@/utils/jsonUtils';
+import { showSuccessToast, showErrorToast } from '@/utils/toast';
 import SearchModal from '@/components/Modals/SearchModal';
 import QueryTransformModal from '@/components/Modals/QueryTransformModal';
 import PerformanceMonitorModal from '@/components/Modals/PerformanceMonitorModal';
@@ -25,6 +26,8 @@ export default function Navbar() {
   const setComparisonJsonA = useAppStore((state) => state.setComparisonJsonA);
   const updateTabContent = useAppStore((state) => state.updateTabContent);
   const addRecentFile = useAppStore((state) => state.addRecentFile);
+  const maskSensitiveData = useAppStore((state) => state.maskSensitiveData);
+  const toggleMaskSensitiveData = useAppStore((state) => state.toggleMaskSensitiveData);
 
   const [showHelp, setShowHelp] = useState(false);
   const [showSearchModal, setShowSearchModal] = useState(false);
@@ -73,7 +76,7 @@ export default function Navbar() {
       // Create a new comparison tab
       addTab({ label: 'Compare JSON', content: { _comparison: true } as any });
     } else {
-      alert('Please load some JSON data first before comparing.');
+      showErrorToast('Please load some JSON data first before comparing.');
     }
   };
 
@@ -91,15 +94,15 @@ export default function Navbar() {
           updateTabContent(activeTabId, result.data);
           addRecentFile(file.name, result.data);
         } else {
-          alert('Invalid JSON file');
+          showErrorToast('Invalid JSON file');
         }
       } catch {
-        alert('Failed to read file');
+        showErrorToast('Failed to read file');
       }
     };
 
     reader.onerror = () => {
-      alert('Failed to read file');
+      showErrorToast('Failed to read file');
     };
 
     reader.readAsText(file);
@@ -108,7 +111,7 @@ export default function Navbar() {
   const handleCopy = async () => {
     if (hasContent) {
       await copyToClipboard(true);
-      alert('JSON copied to clipboard!');
+      showSuccessToast('JSON copied to clipboard!');
     }
   };
 
@@ -174,6 +177,7 @@ export default function Navbar() {
         </button>
 
         <button
+          onClick={() => useAppStore.setState({ showCodeGenerationModal: true })}
           className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
           title="Generate Code"
           aria-label="Generate code"
@@ -234,6 +238,20 @@ export default function Navbar() {
           aria-label="Copy to clipboard"
         >
           <Copy className="w-5 h-5" />
+        </button>
+
+        <button
+          onClick={toggleMaskSensitiveData}
+          disabled={!hasContent}
+          className={`p-2 rounded-lg transition-colors ${
+            maskSensitiveData
+              ? 'bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-400'
+              : 'hover:bg-gray-100 dark:hover:bg-gray-700'
+          } disabled:opacity-30 disabled:cursor-not-allowed`}
+          title={maskSensitiveData ? 'Disable masking' : 'Enable sensitive data masking'}
+          aria-label="Toggle sensitive data masking"
+        >
+          {maskSensitiveData ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
         </button>
 
         <div className="w-px h-6 bg-gray-300 dark:bg-gray-600 mx-1" />

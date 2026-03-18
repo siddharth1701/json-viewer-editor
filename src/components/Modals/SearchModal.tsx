@@ -3,6 +3,7 @@ import { Search, X } from 'lucide-react';
 import { JSONPath } from 'jsonpath-plus';
 import { useAppStore } from '@/stores/useAppStore';
 import type { JSONValue } from '@/types';
+import { showSuccessToast } from '@/utils/toast';
 
 interface SearchModalProps {
   isOpen: boolean;
@@ -122,7 +123,7 @@ export default function SearchModal({ isOpen, onClose }: SearchModalProps) {
 
         if (replacementOccurrences > 0) {
           setError(null);
-          alert(`Replaced ${replacementOccurrences} occurrence(s)`);
+          showSuccessToast(`Replaced ${replacementOccurrences} occurrence(s)`);
         } else {
           setError('No matches found to replace');
         }
@@ -426,7 +427,7 @@ export default function SearchModal({ isOpen, onClose }: SearchModalProps) {
                         <button
                           onClick={() => {
                             navigator.clipboard.writeText(result.content);
-                            alert('Line copied to clipboard!');
+                            showSuccessToast('Line copied to clipboard!');
                           }}
                           className="flex-shrink-0 text-xs px-2 py-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors"
                         >
@@ -460,7 +461,7 @@ export default function SearchModal({ isOpen, onClose }: SearchModalProps) {
                       <button
                         onClick={() => {
                           navigator.clipboard.writeText(JSON.stringify(result.value, null, 2));
-                          alert('Copied to clipboard!');
+                          showSuccessToast('Copied to clipboard!');
                         }}
                         className="text-xs px-2 py-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors"
                       >

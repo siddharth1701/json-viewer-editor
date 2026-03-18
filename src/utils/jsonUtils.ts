@@ -1,4 +1,5 @@
 import type { JSONValue, ValidationError, Statistics } from '@/types';
+import { traverseJSON, countNodes, getMaxDepth, detectCircularReferences as detectCircularReferencesUtil, getLeafNodes } from './treeTraversal';
 
 /**
  * Validates JSON string and returns parsed JSON or error
@@ -226,11 +227,11 @@ export function flattenJSON(
  * Unflattens a flattened JSON structure
  */
 export function unflattenJSON(data: Record<string, JSONValue>): JSONValue {
-  const result: any = {};
+  const result: Record<string, JSONValue> = {};
 
   Object.entries(data).forEach(([key, value]) => {
     const keys = key.split(/\.|\[|\]/).filter(Boolean);
-    let current = result;
+    let current: Record<string, JSONValue> = result;
 
     keys.forEach((k, index) => {
       if (index === keys.length - 1) {
@@ -238,8 +239,10 @@ export function unflattenJSON(data: Record<string, JSONValue>): JSONValue {
       } else {
         const nextKey = keys[index + 1];
         const isArray = /^\d+$/.test(nextKey);
-        current[k] = current[k] || (isArray ? [] : {});
-        current = current[k];
+        if (!(k in current)) {
+          current[k] = isArray ? [] : {};
+        }
+        current = current[k] as Record<string, JSONValue>;
       }
     });
   });
@@ -255,30 +258,23 @@ export function calculateStatistics(data: JSONValue): Statistics {
     totalSize: JSON.stringify(data).length,
     keyCount: 0,
     valueCount: 0,
-    maxDepth: 0,
+    maxDepth: getMaxDepth(data),
     typeDistribution: {},
   };
 
-  function traverse(value: JSONValue, depth: number = 0) {
-    stats.maxDepth = Math.max(stats.maxDepth, depth);
-
+  traverseJSON(data, (value, _, __) => {
     if (Array.isArray(value)) {
       stats.typeDistribution.array = (stats.typeDistribution.array || 0) + 1;
-      value.forEach((item) => traverse(item, depth + 1));
     } else if (value && typeof value === 'object' && value !== null) {
       stats.typeDistribution.object = (stats.typeDistribution.object || 0) + 1;
-      Object.entries(value).forEach(([key, val]) => {
-        stats.keyCount++;
-        traverse(val, depth + 1);
-      });
+      stats.keyCount += Object.keys(value).length;
     } else {
       stats.valueCount++;
       const type = value === null ? 'null' : typeof value;
       stats.typeDistribution[type] = (stats.typeDistribution[type] || 0) + 1;
     }
-  }
+  });
 
-  traverse(data);
   return stats;
 }
 
@@ -286,30 +282,7 @@ export function calculateStatistics(data: JSONValue): Statistics {
  * Detects circular references
  */
 export function detectCircularReferences(data: JSONValue): string[] {
-  const seen = new WeakSet();
-  const paths: string[] = [];
-
-  function traverse(value: JSONValue, path: string = '$') {
-    if (value && typeof value === 'object') {
-      if (seen.has(value as object)) {
-        paths.push(path);
-        return;
-      }
-
-      seen.add(value as object);
-
-      if (Array.isArray(value)) {
-        value.forEach((item, index) => traverse(item, `${path}[${index}]`));
-      } else {
-        Object.entries(value).forEach(([key, val]) => {
-          traverse(val, `${path}.${key}`);
-        });
-      }
-    }
-  }
-
-  traverse(data);
-  return paths;
+  return detectCircularReferencesUtil(data);
 }
 
 /**

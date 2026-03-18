@@ -2,6 +2,10 @@ import { useAppStore } from '@/stores/useAppStore';
 import { formatJSON, minifyJSON, sortKeys } from '@/utils/jsonUtils';
 import { jsonToYAML, jsonToXML, jsonToCSV, jsonToTOML, jsonToHTML } from '@/utils/converters';
 import type { JSONValue, ExportFormat } from '@/types';
+import html2canvas from 'html2canvas';
+import jsPDF from 'jspdf';
+import { showSuccessToast, showErrorToast, showLoadingToast, dismissToast } from '@/utils/toast';
+import { validateJSONSize, validateFileSize, safeStringify, formatBytes } from '@/utils/validation';
 
 export function useJsonActions() {
   const activeTabId = useAppStore((state) => state.activeTabId);
@@ -16,26 +20,28 @@ export function useJsonActions() {
   const formatJson = () => {
     if (!activeTab?.content || !activeTabId) return false;
 
-    // Force a re-render by creating new object reference
-    const formatted = JSON.parse(JSON.stringify(activeTab.content));
-    pushHistory(activeTab.content);
-    updateTabContent(activeTabId, formatted);
+    pushHistory(activeTabId, activeTab.content);
+    // Store the formatted string representation in the tab
+    const formattedString = formatJSON(activeTab.content, indentation);
+    const reparsed = JSON.parse(formattedString);
+    updateTabContent(activeTabId, reparsed);
 
     // Visual feedback
-    setTimeout(() => alert('JSON formatted! (Pretty-printed with indentation)'), 100);
+    showSuccessToast('JSON formatted!');
     return true;
   };
 
   const minify = () => {
     if (!activeTab?.content || !activeTabId) return false;
 
-    // Force a re-render by creating new object reference
-    const minified = JSON.parse(JSON.stringify(activeTab.content));
-    pushHistory(activeTab.content);
-    updateTabContent(activeTabId, minified);
+    pushHistory(activeTabId, activeTab.content);
+    // Store the minified string representation in the tab
+    const minifiedString = minifyJSON(activeTab.content);
+    const reparsed = JSON.parse(minifiedString);
+    updateTabContent(activeTabId, reparsed);
 
     // Visual feedback
-    setTimeout(() => alert('JSON minified! (Compact version - view in Raw or Code mode)'), 100);
+    showSuccessToast('JSON minified!');
     return true;
   };
 
@@ -43,13 +49,20 @@ export function useJsonActions() {
     if (!activeTab?.content || !activeTabId) return;
 
     const sorted = sortKeys(activeTab.content, recursive);
-    pushHistory(activeTab.content);
+    pushHistory(activeTabId, activeTab.content);
     updateTabContent(activeTabId, sorted);
   };
 
   const exportAs = (format: ExportFormat) => {
     if (!activeTab?.content) {
-      alert('No JSON data to export');
+      showErrorToast('No JSON data to export');
+      return;
+    }
+
+    // Validate size before export
+    const sizeValidation = validateJSONSize(activeTab.content);
+    if (!sizeValidation.valid) {
+      showErrorToast(`Export failed: ${sizeValidation.message}`);
       return;
     }
 
@@ -89,6 +102,10 @@ export function useJsonActions() {
           filename = `${activeTab.label || 'data'}.html`;
           mimeType = 'text/html';
           break;
+        case 'pdf':
+          // Generate PDF from HTML
+          generatePDF(activeTab.content, activeTab.label || 'data');
+          return;
         default:
           content = formatJSON(activeTab.content, indentation);
           filename = `${activeTab.label || 'data'}.json`;
@@ -106,13 +123,13 @@ export function useJsonActions() {
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
     } catch (error) {
-      alert(`Export failed: ${(error as Error).message}`);
+      showErrorToast(`Export failed: ${(error as Error).message}`);
     }
   };
 
   const copyToClipboard = async (formatted: boolean = true) => {
     if (!activeTab?.content) {
-      alert('No JSON data to copy');
+      showErrorToast('No JSON data to copy');
       return;
     }
 
@@ -121,15 +138,96 @@ export function useJsonActions() {
         ? formatJSON(activeTab.content, indentation)
         : minifyJSON(activeTab.content);
       await navigator.clipboard.writeText(text);
-      // You could add a toast notification here
-      console.log('Copied to clipboard');
+      showSuccessToast('Copied to clipboard!');
     } catch (error) {
-      alert('Failed to copy to clipboard');
+      showErrorToast('Failed to copy to clipboard');
     }
   };
 
   const downloadJson = () => {
     exportAs('json');
+  };
+
+  const generatePDF = async (data: JSONValue, label: string) => {
+    const toastId = showLoadingToast('Generating PDF...');
+
+    try {
+      // Validate size before PDF generation
+      const sizeValidation = validateJSONSize(data);
+      if (!sizeValidation.valid) {
+        dismissToast(toastId);
+        showErrorToast(`PDF generation failed: ${sizeValidation.message}`);
+        return;
+      }
+
+      // Format JSON with a limit for very large documents
+      const jsonString = formatJSON(data, 2);
+      const truncatedJson = jsonString.length > 100000
+        ? jsonString.slice(0, 100000) + '\n\n... [JSON truncated for PDF]'
+        : jsonString;
+
+      // Create an HTML container for the JSON
+      const container = document.createElement('div');
+      container.style.padding = '20px';
+      container.style.fontFamily = 'monospace';
+      container.style.fontSize = '11px';
+      container.style.backgroundColor = '#fff';
+      container.style.width = '800px';
+      container.innerHTML = `
+        <h1 style="margin-top: 0; font-size: 24px; margin-bottom: 10px;">JSON Export: ${label}</h1>
+        <p style="color: #666; font-size: 10px; margin: 5px 0;">Size: ${formatBytes(new Blob([jsonString]).size)} | Generated: ${new Date().toLocaleString()}</p>
+        <pre style="background: #f5f5f5; padding: 15px; border-radius: 4px; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;">
+${truncatedJson}
+        </pre>
+      `;
+      document.body.appendChild(container);
+
+      try {
+        // Convert to canvas
+        const canvas = await html2canvas(container, {
+          scale: 1,
+          useCORS: true,
+          logging: false,
+        });
+
+        // Create PDF
+        const pdf = new jsPDF({
+          orientation: 'portrait',
+          unit: 'mm',
+          format: 'a4',
+        });
+
+        const imgData = canvas.toDataURL('image/png');
+        const pdfWidth = pdf.internal.pageSize.getWidth();
+        const pdfHeight = pdf.internal.pageSize.getHeight();
+        const imgWidth = pdfWidth - 20;
+        const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+        let yPosition = 10;
+        let heightLeft = imgHeight;
+
+        pdf.addImage(imgData, 'PNG', 10, yPosition, imgWidth, imgHeight);
+        heightLeft -= pdfHeight - 20;
+
+        while (heightLeft > 0) {
+          yPosition = heightLeft - imgHeight;
+          pdf.addPage();
+          pdf.addImage(imgData, 'PNG', 10, yPosition, imgWidth, imgHeight);
+          heightLeft -= pdfHeight - 20;
+        }
+
+        pdf.save(`${label}.pdf`);
+        dismissToast(toastId);
+        showSuccessToast('PDF exported successfully!');
+      } finally {
+        // Clean up
+        document.body.removeChild(container);
+      }
+    } catch (error) {
+      dismissToast(toastId);
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+      showErrorToast(`PDF export failed: ${errorMsg}`);
+    }
   };
 
   return {

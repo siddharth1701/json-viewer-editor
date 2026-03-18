@@ -3,7 +3,6 @@ import { persist } from 'zustand/middleware';
 import type {
   Tab,
   ViewMode,
-  SyntaxTheme,
   RecentFile,
   JSONValue,
 } from '@/types';
@@ -11,9 +10,7 @@ import type {
 interface AppState {
   // Theme & UI
   isDarkMode: boolean;
-  syntaxTheme: SyntaxTheme;
   toggleDarkMode: () => void;
-  setSyntaxTheme: (theme: SyntaxTheme) => void;
 
   // Tabs
   tabs: Tab[];
@@ -35,10 +32,8 @@ interface AppState {
   toggleLeftSidebar: () => void;
   toggleRightSidebar: () => void;
 
-  // Undo/Redo
-  history: JSONValue[][];
-  historyIndex: number;
-  pushHistory: (content: JSONValue) => void;
+  // Per-Tab Undo/Redo
+  pushHistory: (tabId: string, content: JSONValue) => void;
   undo: () => void;
   redo: () => void;
   canUndo: () => boolean;
@@ -49,19 +44,19 @@ interface AppState {
   addRecentFile: (name: string, content: JSONValue) => void;
   loadRecentFile: (id: string) => void;
 
-  // Comparison Mode
-  comparisonMode: boolean;
+  // Comparison Mode - Used only for comparison tab detection
   comparisonJsonA: JSONValue | null;
-  comparisonJsonB: JSONValue | null;
-  setComparisonMode: (enabled: boolean) => void;
   setComparisonJsonA: (json: JSONValue) => void;
-  setComparisonJsonB: (json: JSONValue) => void;
 
   // Settings
   indentation: 2 | 4;
   setIndentation: (indent: 2 | 4) => void;
   maskSensitiveData: boolean;
   toggleMaskSensitiveData: () => void;
+
+  // Modal States
+  showCodeGenerationModal: boolean;
+  setShowCodeGenerationModal: (show: boolean) => void;
 
   // Clear all data
   clearAllData: () => void;
@@ -74,9 +69,11 @@ export const useAppStore = create<AppState>()(
     (set, get) => ({
       // Theme & UI
       isDarkMode: false,
-      syntaxTheme: 'github',
       toggleDarkMode: () => set((state) => ({ isDarkMode: !state.isDarkMode })),
-      setSyntaxTheme: (theme) => set({ syntaxTheme: theme }),
+
+      // View Mode
+      viewMode: 'tree',
+      setViewMode: (mode) => set({ viewMode: mode }),
 
       // Tabs
       tabs: [
@@ -85,6 +82,8 @@ export const useAppStore = create<AppState>()(
           label: 'Untitled',
           content: null,
           isDirty: false,
+          history: [],
+          historyIndex: -1,
         },
       ],
       activeTabId: null,
@@ -95,6 +94,8 @@ export const useAppStore = create<AppState>()(
           content: tabData?.content || null,
           isDirty: false,
           filePath: tabData?.filePath,
+          history: [],
+          historyIndex: -1,
         };
         set((state) => ({
           tabs: [...state.tabs, newTab],
@@ -110,6 +111,8 @@ export const useAppStore = create<AppState>()(
               label: 'Untitled',
               content: null,
               isDirty: false,
+              history: [],
+              historyIndex: -1,
             });
           }
           const newActiveId =
@@ -149,6 +152,8 @@ export const useAppStore = create<AppState>()(
             label,
             content,
             isDirty: false,
+            history: [],
+            historyIndex: -1,
           };
           set((state) => ({
             tabs: [...state.tabs, newTab],
@@ -161,6 +166,8 @@ export const useAppStore = create<AppState>()(
             label,
             content,
             isDirty: false,
+            history: [],
+            historyIndex: -1,
           };
           set((state) => ({
             tabs: [...state.tabs, newTab],
@@ -168,10 +175,6 @@ export const useAppStore = create<AppState>()(
           }));
         }
       },
-
-      // View Mode
-      viewMode: 'tree',
-      setViewMode: (mode) => set({ viewMode: mode }),
 
       // Sidebar States
       leftSidebarOpen: true,
@@ -181,43 +184,79 @@ export const useAppStore = create<AppState>()(
       toggleRightSidebar: () =>
         set((state) => ({ rightSidebarOpen: !state.rightSidebarOpen })),
 
-      // Undo/Redo
-      history: [[]],
-      historyIndex: 0,
-      pushHistory: (content) => {
-        set((state) => {
-          const newHistory = state.history.slice(0, state.historyIndex + 1);
-          newHistory.push([content]);
-          return {
-            history: newHistory.slice(-50), // Keep last 50 states
-            historyIndex: Math.min(newHistory.length - 1, 49),
-          };
-        });
+      // Per-Tab Undo/Redo
+      pushHistory: (tabId, content) => {
+        set((state) => ({
+          tabs: state.tabs.map((tab) => {
+            if (tab.id === tabId) {
+              // Keep only history up to current position, then add new entry
+              const newHistory = tab.history.slice(0, tab.historyIndex + 1);
+              newHistory.push(content);
+              // Keep last 50 entries
+              const trimmedHistory = newHistory.slice(-50);
+              return {
+                ...tab,
+                history: trimmedHistory,
+                historyIndex: trimmedHistory.length - 1,
+              };
+            }
+            return tab;
+          }),
+        }));
       },
       undo: () => {
         const state = get();
-        if (state.historyIndex > 0) {
-          const newIndex = state.historyIndex - 1;
-          const content = state.history[newIndex][0];
-          set({ historyIndex: newIndex });
-          if (state.activeTabId) {
-            state.updateTabContent(state.activeTabId, content);
-          }
-        }
+        if (!state.activeTabId) return;
+
+        set((state) => ({
+          tabs: state.tabs.map((tab) => {
+            if (tab.id === state.activeTabId && tab.historyIndex > 0) {
+              const newIndex = tab.historyIndex - 1;
+              return {
+                ...tab,
+                content: tab.history[newIndex],
+                historyIndex: newIndex,
+                isDirty: true,
+              };
+            }
+            return tab;
+          }),
+        }));
       },
       redo: () => {
         const state = get();
-        if (state.historyIndex < state.history.length - 1) {
-          const newIndex = state.historyIndex + 1;
-          const content = state.history[newIndex][0];
-          set({ historyIndex: newIndex });
-          if (state.activeTabId) {
-            state.updateTabContent(state.activeTabId, content);
-          }
-        }
+        if (!state.activeTabId) return;
+
+        set((state) => ({
+          tabs: state.tabs.map((tab) => {
+            if (
+              tab.id === state.activeTabId &&
+              tab.historyIndex < tab.history.length - 1
+            ) {
+              const newIndex = tab.historyIndex + 1;
+              return {
+                ...tab,
+                content: tab.history[newIndex],
+                historyIndex: newIndex,
+                isDirty: true,
+              };
+            }
+            return tab;
+          }),
+        }));
       },
-      canUndo: () => get().historyIndex > 0,
-      canRedo: () => get().historyIndex < get().history.length - 1,
+      canUndo: () => {
+        const state = get();
+        const activeTab = state.tabs.find((t) => t.id === state.activeTabId);
+        return activeTab ? activeTab.historyIndex > 0 : false;
+      },
+      canRedo: () => {
+        const state = get();
+        const activeTab = state.tabs.find((t) => t.id === state.activeTabId);
+        return activeTab
+          ? activeTab.historyIndex < activeTab.history.length - 1
+          : false;
+      },
 
       // Recent Files
       recentFiles: [],
@@ -241,12 +280,8 @@ export const useAppStore = create<AppState>()(
       },
 
       // Comparison Mode
-      comparisonMode: false,
       comparisonJsonA: null,
-      comparisonJsonB: null,
-      setComparisonMode: (enabled) => set({ comparisonMode: enabled }),
       setComparisonJsonA: (json) => set({ comparisonJsonA: json }),
-      setComparisonJsonB: (json) => set({ comparisonJsonB: json }),
 
       // Settings
       indentation: 2,
@@ -254,6 +289,10 @@ export const useAppStore = create<AppState>()(
       maskSensitiveData: false,
       toggleMaskSensitiveData: () =>
         set((state) => ({ maskSensitiveData: !state.maskSensitiveData })),
+
+      // Modal States
+      showCodeGenerationModal: false,
+      setShowCodeGenerationModal: (show) => set({ showCodeGenerationModal: show }),
 
       // Clear all data
       clearAllData: () => {
@@ -265,7 +304,6 @@ export const useAppStore = create<AppState>()(
       name: 'json-viewer-storage',
       partialize: (state) => ({
         isDarkMode: state.isDarkMode,
-        syntaxTheme: state.syntaxTheme,
         tabs: state.tabs,
         activeTabId: state.activeTabId,
         recentFiles: state.recentFiles,

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Toaster } from 'react-hot-toast';
 import { useAppStore } from './stores/useAppStore';
 import Navbar from './components/Layout/Navbar';
 import LeftSidebar from './components/Layout/LeftSidebar';
@@ -7,12 +8,15 @@ import MainContent from './components/Layout/MainContent';
 import StatusBar from './components/Layout/StatusBar';
 import ErrorBoundary from './components/ErrorBoundary';
 import GuidedTourModal from './components/Modals/GuidedTourModal';
+import CodeGenerationModal from './components/Modals/CodeGenerationModal';
 
 function App() {
   const isDarkMode = useAppStore((state) => state.isDarkMode);
   const tabs = useAppStore((state) => state.tabs);
   const addTab = useAppStore((state) => state.addTab);
   const setActiveTab = useAppStore((state) => state.setActiveTab);
+  const showCodeGenerationModal = useAppStore((state) => state.showCodeGenerationModal);
+  const setShowCodeGenerationModal = useAppStore((state) => state.setShowCodeGenerationModal);
   const [showGuidedTour, setShowGuidedTour] = useState(false);
 
   // Initialize active tab on mount and show tour if first time
@@ -81,6 +85,33 @@ function App() {
         </div>
         <StatusBar />
         <GuidedTourModal isOpen={showGuidedTour} onClose={() => setShowGuidedTour(false)} />
+        <CodeGenerationModal
+          isOpen={showCodeGenerationModal}
+          onClose={() => setShowCodeGenerationModal(false)}
+        />
+        <Toaster
+          position="bottom-right"
+          reverseOrder={false}
+          gutter={8}
+          toastOptions={{
+            style: {
+              borderRadius: '8px',
+              boxShadow: '0 3px 10px rgba(0, 0, 0, 0.1)',
+            },
+            success: {
+              style: {
+                background: '#10b981',
+                color: '#fff',
+              },
+            },
+            error: {
+              style: {
+                background: '#ef4444',
+                color: '#fff',
+              },
+            },
+          }}
+        />
       </div>
     </ErrorBoundary>
   );

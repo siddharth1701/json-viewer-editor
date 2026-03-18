@@ -3,6 +3,8 @@ import { ChevronLeft, BarChart3, Clock, FileText, RefreshCw } from 'lucide-react
 import { useAppStore } from '@/stores/useAppStore';
 import { calculateStatistics, formatFileSize } from '@/utils/jsonUtils';
 import { getAllSamples } from '@/utils/samples';
+import { showErrorToast } from '@/utils/toast';
+import type { JSONValue } from '@/types';
 
 export default function LeftSidebar() {
   const leftSidebarOpen = useAppStore((state) => state.leftSidebarOpen);
@@ -17,15 +19,34 @@ export default function LeftSidebar() {
   const stats = activeTab?.content ? calculateStatistics(activeTab.content) : null;
   const samples = getAllSamples();
 
-  const [analyzeResult, setAnalyzeResult] = useState<any>(null);
+  interface DuplicateItem {
+    value: string;
+    count: number;
+  }
+
+  interface InternalAnalysisResults {
+    circular: number;
+    empty: number;
+    duplicates: Map<string, number>;
+    deepNesting: number;
+  }
+
+  interface AnalysisResults {
+    circular: number;
+    empty: number;
+    duplicates: DuplicateItem[];
+    deepNesting: number;
+  }
+
+  const [analyzeResult, setAnalyzeResult] = useState<AnalysisResults | null>(null);
 
   const handleAnalyze = () => {
     if (!activeTab?.content) {
-      alert('Please load some JSON first');
+      showErrorToast('Please load some JSON first');
       return;
     }
 
-    const analyze = (obj: any, results: any = { circular: 0, empty: 0, duplicates: new Map(), deepNesting: 0 }, path = '', visited = new Set()): any => {
+    const analyze = (obj: JSONValue, results: InternalAnalysisResults = { circular: 0, empty: 0, duplicates: new Map(), deepNesting: 0 }, path = '', visited = new Set()): InternalAnalysisResults => {
       // Circular reference check
       if (typeof obj === 'object' && obj !== null) {
         if (visited.has(obj)) {

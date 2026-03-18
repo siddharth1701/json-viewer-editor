@@ -11,7 +11,7 @@ function inferType(value: JSONValue): string {
 }
 
 export function generateTypeScript(data: JSONValue, interfaceName: string = 'Root'): string {
-  function buildInterface(obj: any, name: string): string {
+  function buildInterface(obj: JSONValue, name: string): string {
     if (typeof obj !== 'object' || obj === null || Array.isArray(obj)) {
       return '';
     }

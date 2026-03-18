@@ -14,6 +14,8 @@ export interface Tab {
   content: JSONValue;
   isDirty: boolean;
   filePath?: string;
+  history: JSONValue[];
+  historyIndex: number;
 }
 
 export interface ValidationError {
@@ -27,26 +29,6 @@ export interface SearchMatch {
   key: string;
   value: JSONValue;
   line?: number;
-}
-
-export interface Snapshot {
-  id: string;
-  timestamp: number;
-  content: JSONValue;
-  label?: string;
-}
-
-export interface Comment {
-  id: string;
-  path: string;
-  text: string;
-  timestamp: number;
-}
-
-export interface Bookmark {
-  id: string;
-  path: string;
-  label: string;
 }
 
 export interface RecentFile {
