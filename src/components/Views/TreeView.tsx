@@ -1,4 +1,4 @@
-import { useState, memo } from 'react';
+import { useState, memo, useEffect } from 'react';
 import { ChevronRight, ChevronDown, Edit, Copy, FileText } from 'lucide-react';
 import { useAppStore } from '@/stores/useAppStore';
 import type { JSONValue } from '@/types';
@@ -51,6 +51,12 @@ const TreeNode = memo(({ nodeKey, value, path, depth }: TreeNodeProps) => {
   const isExpandable = type === 'object' || type === 'array';
 
   const activeTab = tabs.find((tab) => tab.id === activeTabId);
+
+  // Update expansion state when expandLevel changes
+  useEffect(() => {
+    const shouldBeExpanded = expandLevel === null ? depth < 3 : depth < expandLevel;
+    setIsExpanded(shouldBeExpanded);
+  }, [expandLevel, depth]);
 
   // Detect sensitive data patterns using memoized patterns
   const isSensitiveKey = (key: string): boolean => {
