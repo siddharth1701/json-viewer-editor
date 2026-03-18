@@ -2,7 +2,7 @@ import { useRef, useState, useEffect } from 'react';
 import {
   Moon, Sun, Upload, Download, Copy, Trash2,
   Undo2, Redo2, Search, FileJson,
-  GitCompare, Settings, HelpCircle, Database, Activity, Maximize, Minimize, Eye, EyeOff
+  GitCompare, Settings, HelpCircle, Database, Activity, Maximize, Minimize, Eye, EyeOff, ChevronDown
 } from 'lucide-react';
 import { toggleFullscreen, isCurrentlyFullscreen } from '@/utils/fullscreenUtils';
 import { useAppStore } from '@/stores/useAppStore';

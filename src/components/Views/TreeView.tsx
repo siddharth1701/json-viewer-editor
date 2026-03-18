@@ -37,7 +37,9 @@ interface TreeNodeProps {
 }
 
 const TreeNode = memo(({ nodeKey, value, path, depth }: TreeNodeProps) => {
-  const [isExpanded, setIsExpanded] = useState(depth < 3);
+  const expandLevel = useAppStore((state) => state.expandLevel);
+  const defaultExpanded = expandLevel === null ? depth < 3 : depth < expandLevel;
+  const [isExpanded, setIsExpanded] = useState(defaultExpanded);
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState('');
   const updateTabContent = useAppStore((state) => state.updateTabContent);
