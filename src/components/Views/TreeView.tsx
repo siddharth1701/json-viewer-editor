@@ -54,7 +54,17 @@ const TreeNode = memo(({ nodeKey, value, path, depth }: TreeNodeProps) => {
 
   // Update expansion state when expandLevel changes
   useEffect(() => {
-    const shouldBeExpanded = expandLevel === null ? depth < 3 : depth < expandLevel;
+    let shouldBeExpanded = depth < 3; // Default
+
+    if (expandLevel === 0) {
+      // Collapse All
+      shouldBeExpanded = false;
+    } else if (expandLevel !== null && expandLevel > 0) {
+      // Specific level (1-6 or 999)
+      shouldBeExpanded = depth < expandLevel;
+    }
+    // else expandLevel === null: use default (depth < 3)
+
     setIsExpanded(shouldBeExpanded);
   }, [expandLevel, depth]);
 

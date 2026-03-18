@@ -81,7 +81,9 @@ export default function ViewTabs() {
             className="px-3 py-1.5 text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed text-gray-700 dark:text-gray-300 rounded-lg flex items-center gap-2 transition-colors"
             title="Expand tree to specific depth level"
           >
-            <span className="text-xs font-medium">Level {expandLevel ?? 'Auto'}</span>
+            <span className="text-xs font-medium">
+              {expandLevel === 0 ? 'Collapse' : expandLevel === null ? 'Auto' : `Level ${expandLevel}`}
+            </span>
             <ChevronDown className="w-3 h-3" />
           </button>
 
@@ -94,12 +96,12 @@ export default function ViewTabs() {
               <div className="absolute left-0 top-full mt-1 w-40 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl z-20 py-1">
                 <button
                   onClick={() => {
-                    setExpandLevel(null);
+                    setExpandLevel(0);
                     setShowExpandMenu(false);
-                    showSuccessToast('Tree expanded to default level');
+                    showSuccessToast('Tree collapsed');
                   }}
                   className={`w-full text-left px-4 py-2 text-sm transition-colors ${
-                    expandLevel === null
+                    expandLevel === 0
                       ? 'bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300 font-medium'
                       : 'hover:bg-gray-100 dark:hover:bg-gray-700'
                   }`}
