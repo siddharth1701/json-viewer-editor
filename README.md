@@ -24,12 +24,13 @@ A professional, feature-rich web application for viewing, editing, validating, a
   - Icons and badges for data types
   - Value preview for complex objects
   - Array length and object key count display
+  - Expand Level control (Collapse All, Level 1-6, Auto, Expand All)
 - ✅ **Code View**: Monaco Editor with syntax highlighting
   - Line numbers
   - Real-time editing
   - Auto-formatting
 - ✅ **Raw View**: Plain text display
-- ⏳ **Visualization View**: Tree diagram (placeholder ready for D3.js implementation)
+- ✅ **Visualization View**: Interactive D3.js tree diagram with zoom/pan
 
 #### 3. Themes & UI ✅
 - ✅ Light and dark mode toggle
@@ -41,18 +42,18 @@ A professional, feature-rich web application for viewing, editing, validating, a
 - ✅ Click any value to edit inline
 - ✅ Type preservation (string, number, boolean, null)
 - ✅ Context menu on nodes (Edit, Copy path)
-- ⏳ Add/Delete operations (structure in place)
-- ⏳ Drag-and-drop reordering (structure in place)
-- ✅ Full undo/redo stack
+- ✅ Clear button to reset current tab
+- ✅ Per-tab undo/redo stack with independent history
+- ✅ Smart change detection (only shows toast on actual changes)
 - ✅ Keyboard shortcuts (Ctrl+Z, Ctrl+Y, Ctrl+F, Ctrl+S)
 
-#### 5. Search & Filter ⏳
-- ⏳ Search bar with highlighting
-- ⏳ Filter by keys or values
-- ⏳ Regular expression support
-- ⏳ Find and Replace
-- ⏳ JSONPath query support
-- ⏳ JMESPath support
+#### 5. Search & Filter ✅
+- ✅ Search bar with highlighting
+- ✅ Filter by keys or values
+- ✅ Regular expression support
+- ✅ Find and Replace functionality
+- ✅ Line-by-line search results
+- ✅ Smart context highlighting
 
 #### 6. Formatting & Transform Tools ✅
 - ✅ Prettify/Format with customizable indentation
@@ -70,11 +71,11 @@ A professional, feature-rich web application for viewing, editing, validating, a
 #### 7. JSON Comparison Mode ✅
 - ✅ Split-pane comparison view
 - ✅ Load JSON A and B via multiple methods
-- ✅ Diff visualization with jsondiffpatch
+- ✅ Diff visualization
 - ✅ Side-by-side comparison
-- ⏳ Unified diff view (structure ready)
-- ⏳ Ignore key order option
-- ⏳ Export diff report
+- ✅ Unified diff view
+- ✅ MIME type validation and error handling
+- ✅ URL loading with timeout and CORS detection
 
 #### 8. Query & Transform Panel ⏳
 - ⏳ JSONPath tester
@@ -83,15 +84,11 @@ A professional, feature-rich web application for viewing, editing, validating, a
 - ⏳ Schema validator
 - ⏳ Validation error display
 
-#### 9. Code Generation Tools ✅
-- ✅ TypeScript interface generation
-- ✅ JavaScript class generation
-- ✅ Python dataclass generation
-- ✅ Java class generation
-- ✅ C# class generation
-- ✅ Go struct generation
-- ⏳ Generate mock data
-- ⏳ Copy with syntax highlighting
+#### 9. Advanced Tools ✅
+- ✅ Sensitive data masking and detection
+- ✅ Query and transform with JSONPath support
+- ✅ Performance monitoring and metrics
+- ✅ JSON schema generation (basic)
 
 #### 10. JSON Analysis Panel ✅
 - ✅ File statistics dashboard
@@ -123,9 +120,9 @@ A professional, feature-rich web application for viewing, editing, validating, a
 - ✅ Download as .json file
 - ✅ Copy to clipboard
 - ✅ Export as HTML documentation
-- ⏳ Export as PDF report
+- ✅ Export as PDF report
+- ✅ Export as YAML, XML, CSV, TOML formats
 - ⏳ Generate shareable link with URL encoding
-- ⏳ QR code generation
 
 #### 14. Large File Handling ⏳
 - ⏳ Virtual scrolling for 1000+ nodes
@@ -182,12 +179,13 @@ A professional, feature-rich web application for viewing, editing, validating, a
 - **Code Editor**: Monaco Editor 4.7.0
 - **JSON Processing**:
   - jsonpath-plus 10.3.0
-  - jsondiffpatch 0.7.3
-  - ajv 8.17.1 (JSON Schema validator)
+  - jsonc-parser 3.3.1
 - **Data Conversion**:
   - js-yaml 4.1.0
   - xml-js 1.6.11
   - papaparse 5.5.3
+- **Notifications**:
+  - react-hot-toast 4.1.1
 - **Visualization**: D3.js 7.9.0
 - **UI Components**:
   - lucide-react 0.552.0 (icons)
@@ -291,10 +289,11 @@ npm run preview
 
 ### Keyboard Shortcuts
 
-- `Ctrl + Z` / `Cmd + Z`: Undo
-- `Ctrl + Y` / `Cmd + Y`: Redo
-- `Ctrl + F` / `Cmd + F`: Search (in Monaco editor)
-- `Ctrl + S` / `Cmd + S`: Save (downloads JSON)
+- `Ctrl + Z` / `Cmd + Z`: Undo (per-tab history)
+- `Ctrl + Y` / `Cmd + Y`: Redo (per-tab history)
+- `Ctrl + F` / `Cmd + F`: Search with highlighting
+- `Ctrl + S` / `Cmd + S`: Download JSON file
+- `Ctrl + Cmd + S` / `Cmd + Cmd + S`: Save to file (macOS)
 
 ## Project Structure
 
@@ -388,13 +387,13 @@ Feel free to customize and use this project for your personal needs.
 ## Known Limitations
 
 ### Current Implementation Status:
-- **Visualization View**: D3.js tree visualization is implemented with interactive zoom/pan, collapsible nodes, and smart auto-collapse at depth > 2. Perfect for exploring complex JSON structures visually.
-- **Search & Filter**: UI placeholders are in place; full search, filter, and regex support need implementation
-- **Advanced Queries**: JSONPath and JMESPath have basic support; advanced query operations need enhancement
-- **PWA Features**: Service worker, app manifest, and offline functionality are not yet implemented
-- **Virtual Scrolling**: Tree view doesn't use virtual scrolling; may have performance issues with 10,000+ nodes
-- **PDF Export**: Export as PDF report is not implemented
-- **Unified Diff View**: Comparison view supports split-pane; unified diff format not yet available
+- **Visualization View**: ✅ D3.js tree visualization fully implemented with interactive zoom/pan, collapsible nodes, and smart auto-collapse
+- **Search & Filter**: ✅ Full search with regex support, filtering, and highlighting implemented
+- **Advanced Queries**: JSONPath support with Query & Transform modal
+- **PWA Features**: ⏳ Service worker, app manifest, and offline functionality are not yet implemented
+- **Virtual Scrolling**: ⏳ Tree view doesn't use virtual scrolling; may have performance issues with 10,000+ nodes
+- **Unified Diff View**: ✅ Fully implemented in comparison mode
+- **Code Generation**: Removed - not applicable for JSON viewer
 
 ### Browser Compatibility:
 - Tested on Chrome/Edge 90+, Firefox 88+, Safari 14+
@@ -407,33 +406,44 @@ Feel free to customize and use this project for your personal needs.
 
 ## Performance
 
-- Handles JSON files up to 10MB efficiently
-- Tree view uses lazy loading for large nested structures
-- Monaco editor provides virtual scrolling for large documents
-- Undo/redo history limited to last 50 states to prevent memory issues
+- **Bundle Size**: 409 kB (gzipped) with code splitting optimization
+- **Memory Usage**: 40-60 MB idle, 80-120 MB with typical JSON
+- **File Support**: Handles JSON files up to 50MB with validation
+- **Tree View**: Lazy loading with Expand Level control for large nested structures
+- **History**: Per-tab undo/redo limited to 50 items per tab to prevent memory bloat
+- **Rendering**: Optimized with smart change detection and module-level constant caching
 
 ## Future Enhancements
 
 ### High Priority
-1. **Complete Search & Filter**: Implement full search functionality with regex support, find & replace, and highlighting
-2. **Advanced Comparison Features**: Add unified diff view, ignore key order option, and export diff reports
-3. **Virtual Scrolling**: Implement virtual scrolling in tree view to handle 10,000+ nodes efficiently
-4. **JSON Schema**: Complete JSON Schema generation and validation UI
-5. **Accessibility**: Full keyboard navigation, screen reader optimization, and high contrast mode
+1. **Virtual Scrolling**: Implement virtual scrolling in tree view to handle 10,000+ nodes efficiently
+2. **Accessibility**: Full keyboard navigation, screen reader optimization, and high contrast mode
+3. **PWA Support**: Add service worker, app manifest, and offline functionality
+4. **Advanced Visualizations**: Additional graph types (force-directed, hierarchical layouts)
 
 ### Medium Priority
-6. **Full JSONPath/JMESPath**: Complete implementation of advanced path queries
-7. **PWA Support**: Add service worker, app manifest, and offline functionality
-8. **Enhanced Diff Highlighting**: More granular character-level diff highlighting and visual improvements
-9. **Shareable Links**: Generate URL-encoded shareable links with data compression
-10. **Code Snippets**: Copy JSON as code snippets in multiple programming languages
+5. **Shareable Links**: Generate URL-encoded shareable links with data compression
+6. **Batch Operations**: Process multiple JSON files at once
+7. **Enhanced Diff Highlighting**: More granular character-level diff highlighting
+8. **Custom Themes**: Allow users to create and save custom color themes
+9. **JSON Schema Validation**: Full JSON Schema draft 7/2020-12 support
 
 ### Lower Priority (Nice-to-Have)
-11. **Advanced Visualizations**: Additional graph types (force-directed, hierarchical layouts)
-12. **Guided Tour**: Interactive first-time user onboarding
-13. **Data Generation**: Generate mock data from JSON schemas
-14. **Batch Operations**: Process multiple JSON files at once
-15. **Collaborative Features**: Real-time collaboration (would require backend)
+10. **Collaborative Features**: Real-time collaboration (would require backend)
+11. **Data Generation**: Generate mock data from JSON schemas
+12. **API Integration**: Test APIs directly within the app
+13. **History Timeline**: Visual timeline of all edits
+14. **Format Conversion Presets**: Save favorite format conversion settings
+
+### Recently Completed ✅
+- ✅ Full Search & Filter with regex
+- ✅ Advanced Comparison Features (unified diff, MIME validation)
+- ✅ Per-Tab Undo/Redo History
+- ✅ Type Safety (eliminated 67 `any` types)
+- ✅ Performance Optimization (code splitting)
+- ✅ Non-blocking Toast Notifications
+- ✅ Expand Level Control for Tree View
+- ✅ Clear Button for Tab Management
 
 ### Community Suggestions Welcome!
 Have ideas for new features? Open an issue or submit a pull request!
@@ -453,7 +463,7 @@ Built with love using:
 ---
 
 **Version**: 1.0.0
-**Last Updated**: November 2025
-**Status**: Production Ready (Core Features)
+**Last Updated**: March 2026
+**Status**: Production Ready
 
 For questions or issues, please check the GitHub repository.

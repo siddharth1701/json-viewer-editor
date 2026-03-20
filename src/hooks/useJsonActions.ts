@@ -20,13 +20,18 @@ export function useJsonActions() {
   const formatJson = () => {
     if (!activeTab?.content || !activeTabId) return false;
 
-    pushHistory(activeTabId, activeTab.content);
-    // Store the formatted string representation in the tab
+    // Check if content has actually changed
     const formattedString = formatJSON(activeTab.content, indentation);
     const reparsed = JSON.parse(formattedString);
-    updateTabContent(activeTabId, reparsed);
+    const hasChanged = JSON.stringify(activeTab.content) !== JSON.stringify(reparsed);
 
-    // Visual feedback
+    if (!hasChanged) {
+      showSuccessToast('Already formatted!');
+      return false;
+    }
+
+    pushHistory(activeTabId, activeTab.content);
+    updateTabContent(activeTabId, reparsed);
     showSuccessToast('JSON formatted!');
     return true;
   };
@@ -34,13 +39,18 @@ export function useJsonActions() {
   const minify = () => {
     if (!activeTab?.content || !activeTabId) return false;
 
-    pushHistory(activeTabId, activeTab.content);
-    // Store the minified string representation in the tab
+    // Check if content has actually changed
     const minifiedString = minifyJSON(activeTab.content);
     const reparsed = JSON.parse(minifiedString);
-    updateTabContent(activeTabId, reparsed);
+    const hasChanged = JSON.stringify(activeTab.content) !== JSON.stringify(reparsed);
 
-    // Visual feedback
+    if (!hasChanged) {
+      showSuccessToast('Already minified!');
+      return false;
+    }
+
+    pushHistory(activeTabId, activeTab.content);
+    updateTabContent(activeTabId, reparsed);
     showSuccessToast('JSON minified!');
     return true;
   };
@@ -49,8 +59,16 @@ export function useJsonActions() {
     if (!activeTab?.content || !activeTabId) return;
 
     const sorted = sortKeys(activeTab.content, recursive);
+    const hasChanged = JSON.stringify(activeTab.content) !== JSON.stringify(sorted);
+
+    if (!hasChanged) {
+      showSuccessToast('Already sorted!');
+      return;
+    }
+
     pushHistory(activeTabId, activeTab.content);
     updateTabContent(activeTabId, sorted);
+    showSuccessToast('Keys sorted!');
   };
 
   const exportAs = (format: ExportFormat) => {

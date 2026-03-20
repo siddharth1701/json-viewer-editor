@@ -53,10 +53,8 @@ interface AppState {
   setIndentation: (indent: 2 | 4) => void;
   maskSensitiveData: boolean;
   toggleMaskSensitiveData: () => void;
-
-  // Modal States
-  showCodeGenerationModal: boolean;
-  setShowCodeGenerationModal: (show: boolean) => void;
+  expandLevel: number | null; // null = default (3), number = specific depth level
+  setExpandLevel: (level: number | null) => void;
 
   // Clear all data
   clearAllData: () => void;
@@ -289,14 +287,12 @@ export const useAppStore = create<AppState>()(
       maskSensitiveData: false,
       toggleMaskSensitiveData: () =>
         set((state) => ({ maskSensitiveData: !state.maskSensitiveData })),
-
-      // Modal States
-      showCodeGenerationModal: false,
-      setShowCodeGenerationModal: (show) => set({ showCodeGenerationModal: show }),
+      expandLevel: null,
+      setExpandLevel: (level) => set({ expandLevel: level }),
 
       // Clear all data
       clearAllData: () => {
-        localStorage.clear();
+        localStorage.removeItem('json-viewer-storage');
         window.location.reload();
       },
     }),

@@ -1,8 +1,8 @@
 import { useRef, useState, useEffect } from 'react';
 import {
   Moon, Sun, Upload, Download, Copy, Trash2,
-  Undo2, Redo2, Search, Code2, FileJson,
-  GitCompare, Settings, HelpCircle, Database, Activity, Maximize, Minimize, Eye, EyeOff
+  Undo2, Redo2, Search, FileJson,
+  GitCompare, Settings, HelpCircle, Database, Activity, Maximize, Minimize, Eye, EyeOff, ChevronDown
 } from 'lucide-react';
 import { toggleFullscreen, isCurrentlyFullscreen } from '@/utils/fullscreenUtils';
 import { useAppStore } from '@/stores/useAppStore';
@@ -115,6 +115,13 @@ export default function Navbar() {
     }
   };
 
+  const handleClearTab = () => {
+    if (activeTabId) {
+      updateTabContent(activeTabId, null);
+      showSuccessToast('Tab cleared');
+    }
+  };
+
   return (
     <nav className="h-14 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex items-center px-4 gap-4 no-print">
       {/* Logo */}
@@ -176,14 +183,6 @@ export default function Navbar() {
           <Database className="w-5 h-5" />
         </button>
 
-        <button
-          onClick={() => useAppStore.setState({ showCodeGenerationModal: true })}
-          className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
-          title="Generate Code"
-          aria-label="Generate code"
-        >
-          <Code2 className="w-5 h-5" />
-        </button>
       </div>
 
       {/* Right Actions */}
@@ -238,6 +237,16 @@ export default function Navbar() {
           aria-label="Copy to clipboard"
         >
           <Copy className="w-5 h-5" />
+        </button>
+
+        <button
+          onClick={handleClearTab}
+          disabled={!hasContent}
+          className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+          title="Clear current tab"
+          aria-label="Clear tab"
+        >
+          <Trash2 className="w-5 h-5" />
         </button>
 
         <button

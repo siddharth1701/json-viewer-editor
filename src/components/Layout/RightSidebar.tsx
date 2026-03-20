@@ -2,7 +2,6 @@ import { useState } from 'react';
 import {
   ChevronRight,
   FileText,
-  Code2,
   Wand2
 } from 'lucide-react';
 import { useAppStore } from '@/stores/useAppStore';
@@ -10,9 +9,8 @@ import { useJsonActions } from '@/hooks/useJsonActions';
 import { showSuccessToast, showErrorToast } from '@/utils/toast';
 import type { JSONValue } from '@/types';
 
-type ToolTab = 'convert' | 'generate' | 'transform';
+type ToolTab = 'convert' | 'transform';
 type ConvertFormat = 'yaml' | 'xml' | 'csv' | 'toml';
-type GenerateLanguage = 'typescript' | 'javascript' | 'python' | 'java' | 'csharp' | 'go';
 
 export default function RightSidebar() {
   const rightSidebarOpen = useAppStore((state) => state.rightSidebarOpen);
@@ -39,16 +37,6 @@ export default function RightSidebar() {
     } catch (err) {
       showErrorToast(`Failed to convert: ${(err as Error).message}`);
     }
-  };
-
-  const handleGenerate = async (language: GenerateLanguage) => {
-    if (!hasContent) {
-      showErrorToast('Please load some JSON first');
-      return;
-    }
-
-    // Open the code generation modal
-    useAppStore.setState({ showCodeGenerationModal: true });
   };
 
   const handleFlattenStructure = () => {
@@ -159,17 +147,6 @@ export default function RightSidebar() {
           Convert
         </button>
         <button
-          onClick={() => setActiveToolTab('generate')}
-          className={`flex-1 px-4 py-3 text-xs font-medium transition-colors flex items-center justify-center gap-2 ${
-            activeToolTab === 'generate'
-              ? 'bg-gray-100 dark:bg-gray-700 text-primary-600 dark:text-primary-400 border-b-2 border-primary-500'
-              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-750'
-          }`}
-        >
-          <Code2 className="w-4 h-4" />
-          Generate
-        </button>
-        <button
           onClick={() => setActiveToolTab('transform')}
           className={`flex-1 px-4 py-3 text-xs font-medium transition-colors flex items-center justify-center gap-2 ${
             activeToolTab === 'transform'
@@ -217,59 +194,6 @@ export default function RightSidebar() {
                 className="px-4 py-3 text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors font-medium"
               >
                 To TOML
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Generate Tab */}
-        {activeToolTab === 'generate' && (
-          <div className="space-y-3">
-            <p className="text-xs text-gray-600 dark:text-gray-400 mb-4">
-              Generate code from JSON
-            </p>
-            <div className="space-y-2">
-              <button
-                onClick={() => handleGenerate('typescript')}
-                disabled={!hasContent}
-                className="w-full px-4 py-3 text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors font-medium text-left"
-              >
-                TypeScript Interfaces
-              </button>
-              <button
-                onClick={() => handleGenerate('javascript')}
-                disabled={!hasContent}
-                className="w-full px-4 py-3 text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors font-medium text-left"
-              >
-                JavaScript Classes
-              </button>
-              <button
-                onClick={() => handleGenerate('python')}
-                disabled={!hasContent}
-                className="w-full px-4 py-3 text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors font-medium text-left"
-              >
-                Python Dataclasses
-              </button>
-              <button
-                onClick={() => handleGenerate('java')}
-                disabled={!hasContent}
-                className="w-full px-4 py-3 text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors font-medium text-left"
-              >
-                Java Classes
-              </button>
-              <button
-                onClick={() => handleGenerate('csharp')}
-                disabled={!hasContent}
-                className="w-full px-4 py-3 text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors font-medium text-left"
-              >
-                C# Classes
-              </button>
-              <button
-                onClick={() => handleGenerate('go')}
-                disabled={!hasContent}
-                className="w-full px-4 py-3 text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors font-medium text-left"
-              >
-                Go Structs
               </button>
             </div>
           </div>
