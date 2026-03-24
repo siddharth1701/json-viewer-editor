@@ -2,7 +2,7 @@ import { useRef, useState, useEffect } from 'react';
 import {
   Moon, Sun, Upload, Download, Copy, Trash2,
   Undo2, Redo2, Search, FileJson,
-  GitCompare, Settings, HelpCircle, Database, Activity, Maximize, Minimize, Eye, EyeOff, ChevronDown
+  GitCompare, HelpCircle, Database, Activity, Maximize, Minimize, Eye, EyeOff
 } from 'lucide-react';
 import { toggleFullscreen, isCurrentlyFullscreen } from '@/utils/fullscreenUtils';
 import { useAppStore } from '@/stores/useAppStore';
@@ -22,7 +22,7 @@ export default function Navbar() {
   const redo = useAppStore((state) => state.redo);
   const addTab = useAppStore((state) => state.addTab);
   const activeTabId = useAppStore((state) => state.activeTabId);
-  const tabs = useAppStore((state) => state.tabs);
+  const tabs = useAppStore((state) => state.tabs) || [];
   const setComparisonJsonA = useAppStore((state) => state.setComparisonJsonA);
   const updateTabContent = useAppStore((state) => state.updateTabContent);
   const addRecentFile = useAppStore((state) => state.addRecentFile);
@@ -38,7 +38,7 @@ export default function Navbar() {
 
   const { copyToClipboard, downloadJson, hasContent } = useJsonActions();
 
-  const activeTab = tabs.find((tab) => tab.id === activeTabId);
+  const activeTab = tabs?.find((tab) => tab.id === activeTabId);
 
   // Fullscreen handler
   const handleFullscreenToggle = async () => {
@@ -69,7 +69,7 @@ export default function Navbar() {
   }, []);
 
   const handleStartComparison = () => {
-    const activeTab = tabs.find(tab => tab.id === activeTabId);
+    const activeTab = tabs?.find(tab => tab.id === activeTabId);
     // Only create comparison tab if there's content to compare
     if (activeTab?.content) {
       setComparisonJsonA(activeTab.content);

@@ -20,10 +20,11 @@ function App() {
 
   // Initialize active tab on mount and show tour if first time
   useEffect(() => {
-    if (tabs.length > 0 && !useAppStore.getState().activeTabId) {
-      setActiveTab(tabs[0].id);
-    } else if (tabs.length === 0) {
+    // Ensure tabs is defined (fixes hydration issue on some browsers)
+    if (!tabs || tabs.length === 0) {
       addTab();
+    } else if (tabs.length > 0 && !useAppStore.getState().activeTabId) {
+      setActiveTab(tabs[0].id);
     }
 
     // Check if user has seen the tour
@@ -33,7 +34,7 @@ function App() {
       const timer = setTimeout(() => setShowGuidedTour(true), 500);
       return () => clearTimeout(timer);
     }
-  }, []);
+  }, [tabs, addTab, setActiveTab]);
 
   // Apply dark mode class to document
   useEffect(() => {
