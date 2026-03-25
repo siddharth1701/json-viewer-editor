@@ -56,6 +56,10 @@ interface AppState {
   expandLevel: number | null; // null = default (3), number = specific depth level
   setExpandLevel: (level: number | null) => void;
 
+  // Ephemeral Editor Buffer (NOT persisted)
+  rawEditBuffer: string | null;
+  setRawEditBuffer: (raw: string | null) => void;
+
   // Clear all data
   clearAllData: () => void;
 }
@@ -289,6 +293,10 @@ export const useAppStore = create<AppState>()(
         set((state) => ({ maskSensitiveData: !state.maskSensitiveData })),
       expandLevel: null,
       setExpandLevel: (level) => set({ expandLevel: level }),
+
+      // Ephemeral Editor Buffer (NOT persisted to localStorage)
+      rawEditBuffer: null,
+      setRawEditBuffer: (raw) => set({ rawEditBuffer: raw }),
 
       // Clear all data
       clearAllData: () => {

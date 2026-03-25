@@ -8,6 +8,7 @@ export default function CodeView() {
   const activeTabId = useAppStore((state) => state.activeTabId);
   const tabs = useAppStore((state) => state.tabs);
   const updateTabContent = useAppStore((state) => state.updateTabContent);
+  const setRawEditBuffer = useAppStore((state) => state.setRawEditBuffer);
   const indentation = useAppStore((state) => state.indentation);
 
   const activeTab = tabs.find((tab) => tab.id === activeTabId);
@@ -20,8 +21,10 @@ export default function CodeView() {
       try {
         const parsed = JSON.parse(value);
         updateTabContent(activeTabId, parsed);
+        setRawEditBuffer(null); // Clear buffer on valid JSON
       } catch {
-        // Invalid JSON, don't update
+        // Invalid JSON — store raw string so Fix button can repair it
+        setRawEditBuffer(value);
       }
     }
   };

@@ -7,7 +7,7 @@ import {
 import { toggleFullscreen, isCurrentlyFullscreen } from '@/utils/fullscreenUtils';
 import { useAppStore } from '@/stores/useAppStore';
 import { useJsonActions } from '@/hooks/useJsonActions';
-import { validateJSON } from '@/utils/jsonUtils';
+import { validateJSON, repairJSON } from '@/utils/jsonUtils';
 import { showSuccessToast, showErrorToast } from '@/utils/toast';
 import SearchModal from '@/components/Modals/SearchModal';
 import QueryTransformModal from '@/components/Modals/QueryTransformModal';
@@ -29,6 +29,7 @@ export default function Navbar() {
   const setComparisonJsonA = useAppStore((state) => state.setComparisonJsonA);
   const updateTabContent = useAppStore((state) => state.updateTabContent);
   const addRecentFile = useAppStore((state) => state.addRecentFile);
+  const pushHistory = useAppStore((state) => state.pushHistory);
   const maskSensitiveData = useAppStore((state) => state.maskSensitiveData);
   const toggleMaskSensitiveData = useAppStore((state) => state.toggleMaskSensitiveData);
 
@@ -94,10 +95,29 @@ export default function Navbar() {
         const result = validateJSON(content);
 
         if (result.valid && result.data && activeTabId) {
+          pushHistory(activeTabId, null);
           updateTabContent(activeTabId, result.data);
           addRecentFile(file.name, result.data);
+          showSuccessToast(`Loaded "${file.name}"`);
         } else {
-          showErrorToast('Invalid JSON file');
+          // Try to repair the JSON
+          const repaired = repairJSON(content);
+          if (repaired.repaired && repaired.data && activeTabId) {
+            pushHistory(activeTabId, null);
+            updateTabContent(activeTabId, repaired.data);
+            addRecentFile(file.name + ' (repaired)', repaired.data);
+
+            // Build summary of fixes
+            const summary = repaired.suggestions?.length
+              ? repaired.suggestions.length === 1
+                ? repaired.suggestions[0]
+                : repaired.suggestions.slice(0, 2).join('; ')
+              : 'repaired';
+
+            showSuccessToast(`Fixed "${file.name}" — ${summary}`);
+          } else {
+            showErrorToast(`"${file.name}" contains invalid JSON that could not be auto-repaired`);
+          }
         }
       } catch {
         showErrorToast('Failed to read file');

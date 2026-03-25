@@ -1,4 +1,5 @@
 import type { JSONValue, ValidationError, Statistics } from '@/types';
+import { jsonrepair } from 'jsonrepair';
 import { traverseJSON, countNodes, getMaxDepth, detectCircularReferences as detectCircularReferencesUtil, getLeafNodes } from './treeTraversal';
 
 /**
@@ -56,43 +57,97 @@ export function parseJSONC(jsonString: string): JSONValue | null {
 }
 
 /**
- * Attempts to repair malformed JSON
+ * Classifies what was fixed during repair by comparing original and repaired strings
+ */
+function diffSuggestions(original: string, repaired: string): string[] {
+  const suggestions: string[] = [];
+
+  // Trailing commas
+  if (original.includes(',}') || original.includes(',]')) {
+    suggestions.push('Removed trailing commas');
+  }
+
+  // Unquoted keys (check for pattern like `key:` becoming `"key":`)
+  if (!/^\s*["']/.test(original) && repaired.includes('"')) {
+    const keyPattern = /([{,]\s*)([a-zA-Z_$][a-zA-Z0-9_$]*)\s*:/;
+    if (keyPattern.test(original) && !keyPattern.test(repaired)) {
+      suggestions.push('Added quotes around unquoted keys');
+    }
+  }
+
+  // Unclosed brackets
+  if (!original.includes('}') && repaired.includes('}')) {
+    suggestions.push('Closed unclosed braces');
+  }
+  if (!original.includes(']') && repaired.includes(']')) {
+    suggestions.push('Closed unclosed brackets');
+  }
+
+  // Single to double quotes
+  if (original.includes("'") && repaired.includes('"') && !original.includes('"')) {
+    suggestions.push('Converted single quotes to double quotes');
+  }
+
+  // Python-style booleans/null
+  if (/(True|False|None)\b/.test(original)) {
+    suggestions.push('Fixed Python-style boolean/null literals');
+  }
+
+  // undefined/NaN/Infinity
+  if (/(undefined|NaN|Infinity)\b/.test(original)) {
+    suggestions.push('Replaced undefined/NaN/Infinity with valid JSON');
+  }
+
+  // Duplicate keys warning
+  const keyMatches = repaired.match(/"([^"]+)"\s*:/g) || [];
+  const keySet = new Set();
+  let hasDuplicates = false;
+  for (const match of keyMatches) {
+    const key = match.replace(/[":\s]/g, '');
+    if (keySet.has(key)) {
+      hasDuplicates = true;
+      break;
+    }
+    keySet.add(key);
+  }
+  if (hasDuplicates) {
+    suggestions.push('Note: Duplicate keys detected');
+  }
+
+  return suggestions;
+}
+
+/**
+ * Attempts to repair malformed JSON using jsonrepair library
  */
 export function repairJSON(jsonString: string): {
   repaired: boolean;
   data?: JSONValue;
   suggestions?: string[];
 } {
-  const suggestions: string[] = [];
-  let repairedString = jsonString.trim();
-
-  // Try to fix common issues
-  // 1. Missing quotes around keys
-  if (repairedString.includes('{') || repairedString.includes('[')) {
-    const keyRegex = /([{,]\s*)([a-zA-Z_$][a-zA-Z0-9_$]*)\s*:/g;
-    if (keyRegex.test(repairedString)) {
-      repairedString = repairedString.replace(keyRegex, '$1"$2":');
-      suggestions.push('Added quotes around unquoted keys');
-    }
-  }
-
-  // 2. Trailing commas
-  if (repairedString.includes(',]') || repairedString.includes(',}')) {
-    repairedString = repairedString.replace(/,(\s*[}\]])/g, '$1');
-    suggestions.push('Removed trailing commas');
-  }
-
-  // 3. Single quotes to double quotes
-  if (repairedString.includes("'")) {
-    repairedString = repairedString.replace(/'/g, '"');
-    suggestions.push('Converted single quotes to double quotes');
-  }
-
   try {
-    const data = JSON.parse(repairedString);
+    const trimmed = jsonString.trim();
+
+    // Strip BOM if present
+    const cleaned = trimmed.charCodeAt(0) === 0xFEFF ? trimmed.slice(1) : trimmed;
+
+    // Try native parse first
+    try {
+      const data = JSON.parse(cleaned);
+      return { repaired: false, data, suggestions: [] };
+    } catch {
+      // Falls through to repair attempt
+    }
+
+    // Attempt repair with jsonrepair
+    const repaired = jsonrepair(cleaned);
+    const data = JSON.parse(repaired);
+
+    const suggestions = diffSuggestions(cleaned, repaired);
+
     return { repaired: true, data, suggestions };
   } catch {
-    return { repaired: false, suggestions };
+    return { repaired: false, suggestions: [] };
   }
 }
 

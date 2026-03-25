@@ -10,6 +10,7 @@ import {
   ChevronDown,
   ArrowDownAZ,
   Copy,
+  Wrench,
 } from 'lucide-react';
 import { useAppStore } from '@/stores/useAppStore';
 import { useJsonActions } from '@/hooks/useJsonActions';
@@ -26,7 +27,7 @@ export default function ViewTabs() {
   const [showExpandMenu, setShowExpandMenu] = useState(false);
   const [showSearchModal, setShowSearchModal] = useState(false);
 
-  const { formatJson, minify, exportAs, sortKeysAlphabetically, copyToClipboard, hasContent } = useJsonActions();
+  const { formatJson, minify, exportAs, sortKeysAlphabetically, copyToClipboard, autoFixJson, hasContent, hasRawBuffer } = useJsonActions();
 
   const viewOptions: Array<{ mode: ViewMode; icon: typeof TreePine; label: string }> = [
     { mode: 'tree', icon: TreePine, label: 'Tree' },
@@ -152,6 +153,19 @@ export default function ViewTabs() {
         >
           <Wand2 className="w-4 h-4" />
           <span className="hidden sm:inline">Format</span>
+        </button>
+        <button
+          onClick={autoFixJson}
+          disabled={!hasContent && !hasRawBuffer}
+          className={`px-3 py-1.5 text-sm rounded-lg flex items-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+            hasRawBuffer
+              ? 'bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300 hover:bg-amber-200 dark:hover:bg-amber-800'
+              : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'
+          }`}
+          title="Auto-Fix JSON errors"
+        >
+          <Wrench className="w-4 h-4" />
+          <span className="hidden sm:inline">Fix</span>
         </button>
         <button
           onClick={minify}

@@ -1,5 +1,5 @@
 import { useAppStore } from '@/stores/useAppStore';
-import { formatJSON, minifyJSON, sortKeys } from '@/utils/jsonUtils';
+import { formatJSON, minifyJSON, sortKeys, repairJSON } from '@/utils/jsonUtils';
 import { jsonToYAML, jsonToXML, jsonToCSV, jsonToTOML, jsonToHTML } from '@/utils/converters';
 import type { JSONValue, ExportFormat } from '@/types';
 import html2canvas from 'html2canvas';
@@ -14,6 +14,8 @@ export function useJsonActions() {
   const updateTabLabel = useAppStore((state) => state.updateTabLabel);
   const indentation = useAppStore((state) => state.indentation);
   const pushHistory = useAppStore((state) => state.pushHistory);
+  const rawEditBuffer = useAppStore((state) => state.rawEditBuffer);
+  const setRawEditBuffer = useAppStore((state) => state.setRawEditBuffer);
 
   const activeTab = tabs.find((tab) => tab.id === activeTabId);
 
@@ -248,6 +250,50 @@ ${truncatedJson}
     }
   };
 
+  const autoFixJson = () => {
+    if (!activeTabId) return false;
+
+    // If we have a raw buffer with invalid JSON, attempt to fix it
+    if (rawEditBuffer) {
+      const result = repairJSON(rawEditBuffer);
+
+      if (result.repaired && result.data) {
+        // Add to history
+        pushHistory(activeTabId, null);
+        // Update content with repaired JSON
+        updateTabContent(activeTabId, result.data);
+        // Clear the buffer
+        setRawEditBuffer(null);
+
+        // Show success toast with suggestions
+        if (result.suggestions && result.suggestions.length > 0) {
+          const message =
+            result.suggestions.length === 1
+              ? `Auto-fixed: ${result.suggestions[0]}`
+              : result.suggestions.length <= 3
+                ? `Auto-fixed ${result.suggestions.length} issues: ${result.suggestions.join(' · ')}`
+                : `Auto-fixed ${result.suggestions.length} issues in your JSON`;
+          showSuccessToast(message);
+        } else {
+          showSuccessToast('JSON repaired successfully');
+        }
+        return true;
+      } else {
+        // Repair failed
+        showErrorToast('Could not auto-fix JSON. Please check for syntax errors manually.');
+        return false;
+      }
+    } else if (activeTab?.content) {
+      // JSON is already valid
+      showSuccessToast('JSON is already valid — no fixes needed');
+      return false;
+    } else {
+      // No content and no buffer
+      showErrorToast('No JSON to fix');
+      return false;
+    }
+  };
+
   return {
     formatJson,
     minify,
@@ -255,6 +301,8 @@ ${truncatedJson}
     exportAs,
     copyToClipboard,
     downloadJson,
+    autoFixJson,
     hasContent: !!activeTab?.content,
+    hasRawBuffer: !!rawEditBuffer,
   };
 }

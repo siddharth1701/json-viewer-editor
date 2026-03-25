@@ -73,7 +73,16 @@ export default function JSONInput() {
           addRecentFile(file.name, result.data);
           setError(null);
         } else {
-          setError('Invalid JSON file');
+          // Try to repair the JSON
+          const repaired = repairJSON(content);
+          if (repaired.repaired && repaired.data && activeTabId) {
+            updateTabContent(activeTabId, repaired.data);
+            addRecentFile(file.name + ' (repaired)', repaired.data);
+            setError(null);
+            setRepairSuggestion(repaired);
+          } else {
+            setError('Invalid JSON file');
+          }
         }
       } catch {
         setError('Failed to read file');
