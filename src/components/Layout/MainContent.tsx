@@ -9,14 +9,17 @@ import VisualizationView from '../Views/VisualizationView';
 import ComparisonView from '../Views/ComparisonView';
 
 export default function MainContent() {
-  const tabs = useAppStore((state) => state.tabs) || [];
+  const tabs = useAppStore((state) => {
+    const t = state.tabs;
+    return Array.isArray(t) ? t : [];
+  });
   const activeTabId = useAppStore((state) => state.activeTabId);
   const setActiveTab = useAppStore((state) => state.setActiveTab);
   const addTab = useAppStore((state) => state.addTab);
   const closeTab = useAppStore((state) => state.closeTab);
   const viewMode = useAppStore((state) => state.viewMode);
 
-  const activeTab = tabs?.find((tab) => tab.id === activeTabId);
+  const activeTab = Array.isArray(tabs) ? tabs.find((tab) => tab?.id === activeTabId) : undefined;
 
   // Check if current tab is a comparison tab
   const isComparisonTab = activeTab?.content &&

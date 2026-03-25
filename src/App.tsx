@@ -20,19 +20,27 @@ function App() {
 
   // Initialize active tab on mount and show tour if first time
   useEffect(() => {
-    // Ensure tabs is defined (fixes hydration issue on some browsers)
-    if (!tabs || tabs.length === 0) {
-      addTab();
-    } else if (tabs.length > 0 && !useAppStore.getState().activeTabId) {
-      setActiveTab(tabs[0].id);
-    }
+    try {
+      // Ensure tabs is defined and is an array (fixes hydration issue on some browsers)
+      if (!Array.isArray(tabs) || tabs.length === 0) {
+        addTab();
+      } else if (tabs.length > 0 && !useAppStore.getState().activeTabId) {
+        setActiveTab(tabs[0].id);
+      }
 
-    // Check if user has seen the tour
-    const hasSeenTour = localStorage.getItem('json-viewer-seen-tour') === 'true';
-    if (!hasSeenTour) {
-      // Show tour after a short delay to let UI render
-      const timer = setTimeout(() => setShowGuidedTour(true), 500);
-      return () => clearTimeout(timer);
+      // Check if user has seen the tour
+      try {
+        const hasSeenTour = localStorage.getItem('json-viewer-seen-tour') === 'true';
+        if (!hasSeenTour) {
+          // Show tour after a short delay to let UI render
+          const timer = setTimeout(() => setShowGuidedTour(true), 500);
+          return () => clearTimeout(timer);
+        }
+      } catch (e) {
+        console.warn('localStorage access error:', e);
+      }
+    } catch (e) {
+      console.error('App initialization error:', e);
     }
   }, [tabs, addTab, setActiveTab]);
 

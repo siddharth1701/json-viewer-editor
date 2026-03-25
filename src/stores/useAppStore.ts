@@ -306,6 +306,29 @@ export const useAppStore = create<AppState>()(
         indentation: state.indentation,
         maskSensitiveData: state.maskSensitiveData,
       }),
+      onRehydrateStorage: () => (state, error) => {
+        if (error) {
+          console.error('Failed to rehydrate store:', error);
+          // Clear corrupted data and reload
+          localStorage.removeItem('json-viewer-storage');
+          window.location.reload();
+        } else if (state) {
+          // Validate tabs structure after hydration
+          if (!Array.isArray(state.tabs)) {
+            state.tabs = [];
+          }
+          // Ensure all tabs have required fields
+          state.tabs = state.tabs.map(tab => ({
+            id: tab.id || Math.random().toString(36).substr(2, 9),
+            label: tab.label || 'Untitled',
+            content: tab.content ?? null,
+            isDirty: tab.isDirty || false,
+            history: Array.isArray(tab.history) ? tab.history : [],
+            historyIndex: typeof tab.historyIndex === 'number' ? tab.historyIndex : -1,
+            filePath: tab.filePath,
+          }));
+        }
+      },
     }
   )
 );
