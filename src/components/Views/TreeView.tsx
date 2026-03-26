@@ -1,5 +1,5 @@
 import { useState, memo, useEffect } from 'react';
-import { ChevronRight, ChevronDown, Edit, Copy, FileText } from 'lucide-react';
+import { ChevronRight, ChevronDown, Edit, Copy, FileText, Plus, Trash2 } from 'lucide-react';
 import { useAppStore } from '@/stores/useAppStore';
 import type { JSONValue } from '@/types';
 import { getValueType } from '@/utils/jsonUtils';
@@ -42,6 +42,9 @@ const TreeNode = memo(({ nodeKey, value, path, depth }: TreeNodeProps) => {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState('');
+  const [isAddingItem, setIsAddingItem] = useState(false);
+  const [newItemKey, setNewItemKey] = useState('');
+  const [newItemValue, setNewItemValue] = useState('');
   const updateTabContent = useAppStore((state) => state.updateTabContent);
   const pushHistory = useAppStore((state) => state.pushHistory);
   const activeTabId = useAppStore((state) => state.activeTabId);
@@ -168,6 +171,125 @@ const TreeNode = memo(({ nodeKey, value, path, depth }: TreeNodeProps) => {
     setEditValue('');
   };
 
+  const handleDeleteNode = () => {
+    if (!activeTab?.content || !activeTabId || path.length === 0) return;
+
+    const confirmed = window.confirm(`Delete "${nodeKey}"?`);
+    if (!confirmed) return;
+
+    const deleteNestedValue = (obj: JSONValue, pathArray: string[]): JSONValue => {
+      if (pathArray.length === 0) return obj;
+      if (pathArray.length === 1) {
+        const [key] = pathArray;
+        if (Array.isArray(obj)) {
+          const index = parseInt(key);
+          return obj.filter((_, i) => i !== index);
+        } else if (typeof obj === 'object' && obj !== null) {
+          const newObj = { ...obj };
+          delete (newObj as Record<string, JSONValue>)[key];
+          return newObj;
+        }
+        return obj;
+      }
+
+      const [current, ...rest] = pathArray;
+      if (Array.isArray(obj)) {
+        const index = parseInt(current);
+        const newArr = [...obj];
+        newArr[index] = deleteNestedValue(obj[index], rest);
+        return newArr;
+      } else if (typeof obj === 'object' && obj !== null) {
+        return {
+          ...obj,
+          [current]: deleteNestedValue((obj as Record<string, JSONValue>)[current], rest),
+        };
+      }
+      return obj;
+    };
+
+    try {
+      const updatedContent = deleteNestedValue(activeTab.content, path);
+      pushHistory(activeTabId, activeTab.content);
+      updateTabContent(activeTabId, updatedContent);
+      showSuccessToast(`Deleted "${nodeKey}"`);
+    } catch (err) {
+      showErrorToast(`Delete failed: ${(err as Error).message}`);
+    }
+  };
+
+  const handleAddItem = () => {
+    if (!isExpandable) {
+      showErrorToast('Can only add items to objects or arrays');
+      return;
+    }
+    setIsAddingItem(true);
+    setNewItemKey(Array.isArray(value) ? '' : '');
+    setNewItemValue('null');
+  };
+
+  const handleSaveAddItem = () => {
+    if (!activeTab?.content || !activeTabId) return;
+
+    try {
+      if (!Array.isArray(value) && typeof value === 'object' && value !== null) {
+        if (!newItemKey.trim()) {
+          showErrorToast('Key cannot be empty');
+          return;
+        }
+      }
+
+      let newValue: JSONValue;
+      try {
+        newValue = JSON.parse(newItemValue);
+      } catch {
+        newValue = newItemValue; // Treat as string if not valid JSON
+      }
+
+      const addNestedValue = (obj: JSONValue, pathArray: string[], key: string, val: JSONValue): JSONValue => {
+        if (pathArray.length === 0) {
+          if (Array.isArray(obj)) {
+            return [...obj, val];
+          } else if (typeof obj === 'object' && obj !== null) {
+            return { ...obj, [key]: val };
+          }
+          return obj;
+        }
+
+        const [current, ...rest] = pathArray;
+        if (Array.isArray(obj)) {
+          const index = parseInt(current);
+          const newArr = [...obj];
+          newArr[index] = addNestedValue(obj[index], rest, key, val);
+          return newArr;
+        } else if (typeof obj === 'object' && obj !== null) {
+          return {
+            ...obj,
+            [current]: addNestedValue((obj as Record<string, JSONValue>)[current], rest, key, val),
+          };
+        }
+        return obj;
+      };
+
+      const key = Array.isArray(value) ? '' : newItemKey.trim();
+      const updatedContent = addNestedValue(activeTab.content, path, key, newValue);
+      pushHistory(activeTabId, activeTab.content);
+      updateTabContent(activeTabId, updatedContent);
+      setIsAddingItem(false);
+      setNewItemKey('');
+      setNewItemValue('');
+      showSuccessToast('Item added successfully!');
+      setIsExpanded(true); // Auto-expand to show the new item
+    } catch (err) {
+      showErrorToast(`Add failed: ${(err as Error).message}`);
+    }
+  };
+
+  const handleCancelAddItem = () => {
+    setIsAddingItem(false);
+    setNewItemKey('');
+    setNewItemValue('');
+  };
+
   const getTypeColor = (t: string) => {
     switch (t) {
       case 'string':
@@ -224,6 +346,51 @@ const TreeNode = memo(({ nodeKey, value, path, depth }: TreeNodeProps) => {
         </span>
       );
     }
+  };
+
+  const renderAddItemForm = () => {
+    if (!isAddingItem || !isExpandable) return null;
+
+    const isArray = Array.isArray(value);
+
+    return (
+      <div
+        className="flex items-center gap-2 px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded group"
+        style={{ paddingLeft: `${(depth + 1) * 20 + 8}px` }}
+      >
+        <div className="w-5" />
+        {!isArray && (
+          <input
+            type="text"
+            value={newItemKey}
+            onChange={(e) => setNewItemKey(e.target.value)}
+            placeholder="Key"
+            className="w-24 px-2 py-1 text-xs border border-primary-500 rounded bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-500"
+            autoFocus
+          />
+        )}
+        <span className="text-blue-600 dark:text-blue-400">:</span>
+        <input
+          type="text"
+          value={newItemValue}
+          onChange={(e) => setNewItemValue(e.target.value)}
+          placeholder='Value (JSON)'
+          className="flex-1 px-2 py-1 text-xs border border-primary-500 rounded bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-500"
+        />
+        <button
+          onClick={handleSaveAddItem}
+          className="px-2 py-1 text-xs bg-green-500 hover:bg-green-600 text-white rounded transition-colors"
+        >
+          Add
+        </button>
+        <button
+          onClick={handleCancelAddItem}
+          className="px-2 py-1 text-xs bg-gray-400 hover:bg-gray-500 text-white rounded transition-colors"
+        >
+          Cancel
+        </button>
+      </div>
+    );
   };
 
   const renderChildren = () => {
@@ -339,11 +506,32 @@ const TreeNode = memo(({ nodeKey, value, path, depth }: TreeNodeProps) => {
               >
                 <Edit className="w-3.5 h-3.5" />
               </button>
+              {isExpandable && (
+                <button
+                  className="p-1 hover:bg-green-200 dark:hover:bg-green-700 rounded text-green-600 dark:text-green-400"
+                  title="Add item"
+                  aria-label="Add item"
+                  onClick={handleAddItem}
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                </button>
+              )}
+              {path.length > 0 && (
+                <button
+                  className="p-1 hover:bg-red-200 dark:hover:bg-red-700 rounded text-red-600 dark:text-red-400"
+                  title="Delete item"
+                  aria-label="Delete item"
+                  onClick={handleDeleteNode}
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
           </>
         )}
       </div>
 
+      {renderAddItemForm()}
       {renderChildren()}
     </div>
   );

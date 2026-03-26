@@ -2,7 +2,7 @@ import { useRef, useState, useEffect } from 'react';
 import {
   Moon, Sun, Upload, Download, Copy, Trash2,
   Undo2, Redo2, Search, FileJson,
-  GitCompare, HelpCircle, Database, Activity, Maximize, Minimize, Eye, EyeOff
+  GitCompare, HelpCircle, Database, Activity, Maximize, Minimize, Eye, EyeOff, Settings
 } from 'lucide-react';
 import { toggleFullscreen, isCurrentlyFullscreen } from '@/utils/fullscreenUtils';
 import { useAppStore } from '@/stores/useAppStore';
@@ -12,6 +12,7 @@ import { showSuccessToast, showErrorToast } from '@/utils/toast';
 import SearchModal from '@/components/Modals/SearchModal';
 import QueryTransformModal from '@/components/Modals/QueryTransformModal';
 import PerformanceMonitorModal from '@/components/Modals/PerformanceMonitorModal';
+import SettingsModal from '@/components/Modals/SettingsModal';
 
 export default function Navbar() {
   const isDarkMode = useAppStore((state) => state.isDarkMode);
@@ -37,6 +38,7 @@ export default function Navbar() {
   const [showSearchModal, setShowSearchModal] = useState(false);
   const [showQueryTransformModal, setShowQueryTransformModal] = useState(false);
   const [showPerformanceMonitor, setShowPerformanceMonitor] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -299,6 +301,15 @@ export default function Navbar() {
         </button>
 
         <button
+          onClick={() => setShowSettings(true)}
+          className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+          title="Settings"
+          aria-label="Open settings"
+        >
+          <Settings className="w-5 h-5" />
+        </button>
+
+        <button
           onClick={() => setShowHelp(!showHelp)}
           className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
           title="Help & Shortcuts"
@@ -361,6 +372,9 @@ export default function Navbar() {
 
       {/* Performance Monitor Modal */}
       <PerformanceMonitorModal isOpen={showPerformanceMonitor} onClose={() => setShowPerformanceMonitor(false)} />
+
+      {/* Settings Modal */}
+      <SettingsModal isOpen={showSettings} onClose={() => setShowSettings(false)} />
     </nav>
   );
 }

@@ -41,6 +41,8 @@ export default function ComparisonView() {
   const dropdownRefB = useRef<HTMLDivElement>(null);
 
   const comparisonJsonA = useAppStore((state) => state.comparisonJsonA);
+  const activeTabId = useAppStore((state) => state.activeTabId);
+  const tabs = useAppStore((state) => state.tabs);
 
   // Function to find character-level differences between two strings
   const findCharDiffs = (strA: string, strB: string) => {
@@ -408,6 +410,30 @@ export default function ComparisonView() {
       document.removeEventListener('mouseup', handleMouseUp);
     };
   }, [isResizing]);
+
+  const handleLoadFromOpenTab = (tabId: string, side: 'A' | 'B') => {
+    const tab = tabs.find((t) => t.id === tabId);
+    if (!tab?.content) {
+      showErrorToast('Selected tab has no data');
+      return;
+    }
+
+    const formatted = JSON.stringify(tab.content, null, 2);
+
+    if (side === 'A') {
+      setJsonTextA(formatted);
+      setParsedJsonA(tab.content);
+      setErrorA(null);
+      setShowLoadMenuA(false);
+    } else {
+      setJsonTextB(formatted);
+      setParsedJsonB(tab.content);
+      setErrorB(null);
+      setShowLoadMenuB(false);
+    }
+
+    showSuccessToast(`Loaded "${tab.label}" for comparison`);
+  };
 
   const handleLoadFromURL = async (side: 'A' | 'B') => {
     const url = prompt('Enter JSON URL:');
@@ -826,7 +852,27 @@ export default function ComparisonView() {
                 Load <span className="ml-1">▼</span>
               </button>
               {showLoadMenuA && (
-                <div className="absolute right-0 top-full mt-1 w-48 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl z-20 py-1">
+                <div className="absolute right-0 top-full mt-1 w-48 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl z-20 py-1 max-h-64 overflow-y-auto">
+                  {tabs.filter((t) => t.id !== activeTabId && t.content).length > 0 && (
+                    <>
+                      <div className="px-4 py-2 text-xs font-semibold text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-900 sticky top-0">
+                        Open Tabs
+                      </div>
+                      {tabs
+                        .filter((t) => t.id !== activeTabId && t.content)
+                        .map((tab) => (
+                          <button
+                            key={tab.id}
+                            onClick={() => handleLoadFromOpenTab(tab.id, 'A')}
+                            className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors truncate"
+                            title={tab.label}
+                          >
+                            {tab.label}
+                          </button>
+                        ))}
+                      <div className="border-t border-gray-200 dark:border-gray-700 my-1" />
+                    </>
+                  )}
                   <button
                     onClick={() => handleLoadFromURL('A')}
                     className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center gap-2"
@@ -917,7 +963,27 @@ export default function ComparisonView() {
                 Load <span className="ml-1">▼</span>
               </button>
               {showLoadMenuB && (
-                <div className="absolute right-0 top-full mt-1 w-48 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl z-20 py-1">
+                <div className="absolute right-0 top-full mt-1 w-48 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl z-20 py-1 max-h-64 overflow-y-auto">
+                  {tabs.filter((t) => t.id !== activeTabId && t.content).length > 0 && (
+                    <>
+                      <div className="px-4 py-2 text-xs font-semibold text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-900 sticky top-0">
+                        Open Tabs
+                      </div>
+                      {tabs
+                        .filter((t) => t.id !== activeTabId && t.content)
+                        .map((tab) => (
+                          <button
+                            key={tab.id}
+                            onClick={() => handleLoadFromOpenTab(tab.id, 'B')}
+                            className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors truncate"
+                            title={tab.label}
+                          >
+                            {tab.label}
+                          </button>
+                        ))}
+                      <div className="border-t border-gray-200 dark:border-gray-700 my-1" />
+                    </>
+                  )}
                   <button
                     onClick={() => handleLoadFromURL('B')}
                     className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center gap-2"

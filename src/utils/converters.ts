@@ -199,3 +199,57 @@ export function jsonToHTML(data: JSONValue, title: string = 'JSON Data'): string
 </body>
 </html>`;
 }
+
+/**
+ * Converts YAML to JSON
+ */
+export function yamlToJSON(yamlText: string): JSONValue {
+  try {
+    const data = yaml.load(yamlText);
+    return data as JSONValue;
+  } catch (error) {
+    throw new Error('Failed to parse YAML: ' + (error as Error).message);
+  }
+}
+
+/**
+ * Converts XML to JSON
+ */
+export function xmlToJSON(xmlText: string): JSONValue {
+  try {
+    const options = {
+      compact: true,
+      ignoreComment: true,
+    };
+    const result = xmljs.xml2json(xmlText, options);
+    const parsed = JSON.parse(result);
+    // Remove the root wrapper if it exists
+    if (parsed && typeof parsed === 'object' && 'root' in parsed) {
+      return parsed.root as JSONValue;
+    }
+    return parsed as JSONValue;
+  } catch (error) {
+    throw new Error('Failed to parse XML: ' + (error as Error).message);
+  }
+}
+
+/**
+ * Converts CSV to JSON array
+ */
+export function csvToJSON(csvText: string): JSONValue {
+  try {
+    const result = Papa.parse(csvText, {
+      header: true,
+      skipEmptyLines: true,
+      dynamicTyping: true,
+    });
+
+    if (result.errors && result.errors.length > 0) {
+      throw new Error(result.errors[0].message);
+    }
+
+    return result.data as JSONValue;
+  } catch (error) {
+    throw new Error('Failed to parse CSV: ' + (error as Error).message);
+  }
+}

@@ -2,14 +2,16 @@ import { useState } from 'react';
 import {
   ChevronRight,
   FileText,
-  Wand2
+  Wand2,
+  Download
 } from 'lucide-react';
 import { useAppStore } from '@/stores/useAppStore';
 import { useJsonActions } from '@/hooks/useJsonActions';
 import { showSuccessToast, showErrorToast } from '@/utils/toast';
+import ImportModal from '../Modals/ImportModal';
 import type { JSONValue } from '@/types';
 
-type ToolTab = 'convert' | 'transform';
+type ToolTab = 'convert' | 'import' | 'transform';
 type ConvertFormat = 'yaml' | 'xml' | 'csv' | 'toml';
 
 export default function RightSidebar() {
@@ -21,6 +23,7 @@ export default function RightSidebar() {
   const pushHistory = useAppStore((state) => state.pushHistory);
 
   const [activeToolTab, setActiveToolTab] = useState<ToolTab>('convert');
+  const [showImportModal, setShowImportModal] = useState(false);
 
   const { exportAs, hasContent } = useJsonActions();
   const activeTab = tabs.find((tab) => tab.id === activeTabId);
@@ -147,6 +150,17 @@ export default function RightSidebar() {
           Convert
         </button>
         <button
+          onClick={() => setActiveToolTab('import')}
+          className={`flex-1 px-4 py-3 text-xs font-medium transition-colors flex items-center justify-center gap-2 ${
+            activeToolTab === 'import'
+              ? 'bg-gray-100 dark:bg-gray-700 text-primary-600 dark:text-primary-400 border-b-2 border-primary-500'
+              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-750'
+          }`}
+        >
+          <Download className="w-4 h-4" />
+          Import
+        </button>
+        <button
           onClick={() => setActiveToolTab('transform')}
           className={`flex-1 px-4 py-3 text-xs font-medium transition-colors flex items-center justify-center gap-2 ${
             activeToolTab === 'transform'
@@ -199,6 +213,25 @@ export default function RightSidebar() {
           </div>
         )}
 
+        {/* Import Tab */}
+        {activeToolTab === 'import' && (
+          <div className="space-y-3">
+            <p className="text-xs text-gray-600 dark:text-gray-400 mb-4">
+              Import data from YAML, XML, or CSV
+            </p>
+            <button
+              onClick={() => setShowImportModal(true)}
+              className="w-full px-4 py-3 text-sm bg-primary-500 hover:bg-primary-600 text-white rounded-lg transition-colors font-medium flex items-center justify-center gap-2"
+            >
+              <Download className="w-4 h-4" />
+              Import Data
+            </button>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-4">
+              Import YAML, XML, or CSV files to convert them to JSON format.
+            </p>
+          </div>
+        )}
+
         {/* Transform Tab */}
         {activeToolTab === 'transform' && (
           <div className="space-y-3">
@@ -232,6 +265,9 @@ export default function RightSidebar() {
           </div>
         )}
       </div>
+
+      {/* Import Modal */}
+      <ImportModal isOpen={showImportModal} onClose={() => setShowImportModal(false)} />
     </aside>
   );
 }
