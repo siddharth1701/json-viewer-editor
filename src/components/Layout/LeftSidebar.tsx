@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { ChevronLeft, BarChart3, Clock, FileText, RefreshCw } from 'lucide-react';
+import { formatDistanceToNow } from 'date-fns';
 import { useAppStore } from '@/stores/useAppStore';
 import { calculateStatistics, formatFileSize } from '@/utils/jsonUtils';
 import { getAllSamples } from '@/utils/samples';
@@ -233,9 +234,13 @@ export default function LeftSidebar() {
                 <button
                   key={file.id}
                   onClick={() => loadRecentFile(file.id)}
-                  className="w-full text-left px-2 py-1.5 text-sm rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors truncate"
+                  className="w-full text-left px-2 py-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                  title={file.name}
                 >
-                  {file.name}
+                  <div className="text-sm truncate">{file.name}</div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400">
+                    {file.timestamp ? formatDistanceToNow(new Date(file.timestamp), { addSuffix: true }) : 'unknown'}
+                  </div>
                 </button>
               ))}
             </div>

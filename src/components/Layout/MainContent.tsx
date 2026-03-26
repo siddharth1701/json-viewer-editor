@@ -1,4 +1,5 @@
 import { Plus, X } from 'lucide-react';
+import { useState, useRef } from 'react';
 import { useAppStore } from '@/stores/useAppStore';
 import JSONInput from '../Views/JSONInput';
 import ViewTabs from '../Views/ViewTabs';
@@ -18,6 +19,11 @@ export default function MainContent() {
   const addTab = useAppStore((state) => state.addTab);
   const closeTab = useAppStore((state) => state.closeTab);
   const viewMode = useAppStore((state) => state.viewMode);
+  const updateTabLabel = useAppStore((state) => state.updateTabLabel);
+
+  const [editingTabId, setEditingTabId] = useState<string | null>(null);
+  const [editingLabel, setEditingLabel] = useState('');
+  const editInputRef = useRef<HTMLInputElement>(null);
 
   const activeTab = Array.isArray(tabs) ? tabs.find((tab) => tab?.id === activeTabId) : undefined;
 
@@ -25,6 +31,31 @@ export default function MainContent() {
   const isComparisonTab = activeTab?.content &&
     typeof activeTab.content === 'object' &&
     '_comparison' in activeTab.content;
+
+  const handleTabLabelDoubleClick = (tabId: string, currentLabel: string) => {
+    setEditingTabId(tabId);
+    setEditingLabel(currentLabel);
+    setTimeout(() => editInputRef.current?.focus(), 0);
+  };
+
+  const handleSaveLabel = (tabId: string) => {
+    if (editingLabel.trim()) {
+      updateTabLabel(tabId, editingLabel.trim());
+    }
+    setEditingTabId(null);
+    setEditingLabel('');
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent, tabId: string) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleSaveLabel(tabId);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      setEditingTabId(null);
+      setEditingLabel('');
+    }
+  };
 
   return (
     <main className="flex-1 flex flex-col bg-gray-50 dark:bg-gray-900 overflow-hidden">
@@ -41,7 +72,26 @@ export default function MainContent() {
                   : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300'
               }`}
             >
-              <span className="text-sm max-w-[150px] truncate">{tab.label}</span>
+              {editingTabId === tab.id ? (
+                <input
+                  ref={editInputRef}
+                  type="text"
+                  value={editingLabel}
+                  onChange={(e) => setEditingLabel(e.target.value)}
+                  onBlur={() => handleSaveLabel(tab.id)}
+                  onKeyDown={(e) => handleKeyDown(e, tab.id)}
+                  onClick={(e) => e.stopPropagation()}
+                  className="text-sm w-[100px] px-2 py-0.5 rounded border border-primary-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none"
+                  autoFocus
+                />
+              ) : (
+                <span
+                  onDoubleClick={() => handleTabLabelDoubleClick(tab.id, tab.label)}
+                  className="text-sm max-w-[150px] truncate cursor-text"
+                >
+                  {tab.label}
+                </span>
+              )}
               {tab.isDirty && (
                 <span className="w-1.5 h-1.5 rounded-full bg-primary-500" title="Unsaved changes" />
               )}

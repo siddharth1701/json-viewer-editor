@@ -29,6 +29,7 @@ export default function VisualizationView() {
 
   const activeTabId = useAppStore((state) => state.activeTabId);
   const tabs = useAppStore((state) => state.tabs);
+  const isDarkMode = useAppStore((state) => state.isDarkMode);
 
   const activeTab = tabs.find((tab) => tab.id === activeTabId);
   const jsonData = activeTab?.content;
@@ -344,7 +345,7 @@ export default function VisualizationView() {
       .attr('text-anchor', 'middle')
       .attr('font-size', '12px')
       .attr('font-weight', '600')
-      .attr('fill', '#0f172a')
+      .attr('fill', isDarkMode ? '#f3f4f6' : '#0f172a')
       .attr('dominant-baseline', 'middle')
       .style('pointer-events', 'none')
       .style('user-select', 'none')
@@ -443,7 +444,7 @@ export default function VisualizationView() {
         currentTransformRef.current
       );
     }
-  }, [jsonData, collapsedNodes]);
+  }, [jsonData, collapsedNodes, isDarkMode]);
 
   if (!jsonData) {
     return (
