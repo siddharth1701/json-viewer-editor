@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, Fragment } from 'react';
 import { Upload, Link as LinkIcon, ChevronUp, ChevronDown, Settings2, FileText } from 'lucide-react';
 import { useAppStore } from '@/stores/useAppStore';
 import { validateJSON } from '@/utils/jsonUtils';
@@ -6,13 +6,420 @@ import { showSuccessToast, showErrorToast, showInfoToast, showLoadingToast, dism
 import { validateFileSize, validateJSONSize } from '@/utils/validation';
 import type { JSONValue } from '@/types';
 
-interface DiffLine {
-  type: 'unchanged' | 'added' | 'removed' | 'modified';
-  lineNumber: number;
-  content: string;
-  pair?: number;
-  charDiffs?: Array<{ start: number; end: number; type: 'added' | 'removed' | 'modified' }>;
+// ============ Types ============
+
+type DiffOp =
+  | { kind: 'unchanged'; lineA: number; lineB: number; content: string }
+  | { kind: 'removed'; lineA: number; content: string }
+  | { kind: 'added'; lineB: number; content: string }
+  | { kind: 'modified'; lineA: number; lineB: number; contentA: string; contentB: string };
+
+type AlignedRow =
+  | { kind: 'unchanged'; lineNum: number; content: string }
+  | { kind: 'removed'; lineNum: number; content: string; spans?: CharSpan[] }
+  | { kind: 'added'; lineNum: number; content: string; spans?: CharSpan[] }
+  | { kind: 'modified'; lineNum: number; content: string; spans?: CharSpan[] }
+  | { kind: 'gap' };
+
+type CharSpan = { start: number; end: number };
+
+type HunkHeader = {
+  rowIndex: number;
+  rangeA: string;
+  rangeB: string;
+  pathA?: string;
+  pathB?: string;
+};
+
+// ============ Constants ============
+
+const DIAGONAL_STRIPE =
+  'repeating-linear-gradient(-45deg, transparent, transparent 4px, rgba(100, 100, 100, 0.1) 4px, rgba(100, 100, 100, 0.1) 8px)';
+
+// ============ Pure Algorithm Functions ============
+
+function computeLCS(a: string[], b: string[]): number[][] {
+  // Guard for large files
+  if (a.length * b.length > 2_250_000) {
+    return [];
+  }
+
+  const m = a.length;
+  const n = b.length;
+  const dp: number[][] = Array(m + 1)
+    .fill(null)
+    .map(() => Array(n + 1).fill(0));
+
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      if (a[i - 1] === b[j - 1]) {
+        dp[i][j] = dp[i - 1][j - 1] + 1;
+      } else {
+        dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
+      }
+    }
+  }
+
+  return dp;
 }
+
+function buildDiffOps(linesA: string[], linesB: string[]): DiffOp[] {
+  const dps = computeLCS(linesA, linesB);
+
+  // If LCS failed due to size, fall back to positional
+  if (dps.length === 0) {
+    const ops: DiffOp[] = [];
+    const maxLen = Math.max(linesA.length, linesB.length);
+    for (let i = 0; i < maxLen; i++) {
+      const a = linesA[i];
+      const b = linesB[i];
+      if (a === undefined) {
+        ops.push({ kind: 'added', lineB: i, content: b });
+      } else if (b === undefined) {
+        ops.push({ kind: 'removed', lineA: i, content: a });
+      } else if (a === b) {
+        ops.push({ kind: 'unchanged', lineA: i, lineB: i, content: a });
+      } else {
+        ops.push({ kind: 'modified', lineA: i, lineB: i, contentA: a, contentB: b });
+      }
+    }
+    return ops;
+  }
+
+  // Backtrack LCS to get matched indices
+  const matched = new Set<number>(); // indices in A that are matched
+  const matchedB = new Set<number>(); // indices in B that are matched
+  let i = linesA.length;
+  let j = linesB.length;
+
+  while (i > 0 && j > 0) {
+    if (linesA[i - 1] === linesB[j - 1]) {
+      matched.add(i - 1);
+      matchedB.add(j - 1);
+      i--;
+      j--;
+    } else if (dps[i - 1][j] > dps[i][j - 1]) {
+      i--;
+    } else {
+      j--;
+    }
+  }
+
+  // Build ops from matched pairs
+  const ops: DiffOp[] = [];
+  const aIndex: number[] = [];
+  const bIndex: number[] = [];
+
+  for (let idx = 0; idx < linesA.length; idx++) {
+    if (matched.has(idx)) {
+      aIndex.push(idx);
+    }
+  }
+
+  for (let idx = 0; idx < linesB.length; idx++) {
+    if (matchedB.has(idx)) {
+      bIndex.push(idx);
+    }
+  }
+
+  // Two-pointer merge to produce ops
+  let aPtr = 0;
+  let bPtr = 0;
+
+  while (aPtr < aIndex.length || bPtr < bIndex.length) {
+    const aIdx = aPtr < aIndex.length ? aIndex[aPtr] : Infinity;
+    const bIdx = bPtr < bIndex.length ? bIndex[bPtr] : Infinity;
+
+    if (aIdx < bIdx) {
+      // Line removed from A
+      ops.push({ kind: 'removed', lineA: aIdx, content: linesA[aIdx] });
+      aPtr++;
+    } else if (bIdx < aIdx) {
+      // Line added to B
+      ops.push({ kind: 'added', lineB: bIdx, content: linesB[bIdx] });
+      bPtr++;
+    } else {
+      // Matched pair
+      ops.push({ kind: 'unchanged', lineA: aIdx, lineB: bIdx, content: linesA[aIdx] });
+      aPtr++;
+      bPtr++;
+    }
+  }
+
+  // Post-process: collapse single adjacent remove+add → modified
+  const collapsed: DiffOp[] = [];
+  for (let idx = 0; idx < ops.length; idx++) {
+    const curr = ops[idx];
+    const next = ops[idx + 1];
+
+    if (
+      curr.kind === 'removed' &&
+      next &&
+      next.kind === 'added'
+    ) {
+      collapsed.push({
+        kind: 'modified',
+        lineA: curr.lineA,
+        lineB: next.lineB,
+        contentA: curr.content,
+        contentB: next.content
+      });
+      idx++; // skip next
+    } else {
+      collapsed.push(curr);
+    }
+  }
+
+  return collapsed;
+}
+
+function buildAlignedRows(ops: DiffOp[]): { rowsA: AlignedRow[]; rowsB: AlignedRow[] } {
+  const rowsA: AlignedRow[] = [];
+  const rowsB: AlignedRow[] = [];
+
+  for (const op of ops) {
+    switch (op.kind) {
+      case 'unchanged':
+        rowsA.push({ kind: 'unchanged', lineNum: op.lineA + 1, content: op.content });
+        rowsB.push({ kind: 'unchanged', lineNum: op.lineB + 1, content: op.content });
+        break;
+
+      case 'removed':
+        rowsA.push({ kind: 'removed', lineNum: op.lineA + 1, content: op.content });
+        rowsB.push({ kind: 'gap' });
+        break;
+
+      case 'added':
+        rowsA.push({ kind: 'gap' });
+        rowsB.push({ kind: 'added', lineNum: op.lineB + 1, content: op.content });
+        break;
+
+      case 'modified': {
+        const spansA = tokenDiff(op.contentA, op.contentB).spansA;
+        const spansB = tokenDiff(op.contentA, op.contentB).spansB;
+        rowsA.push({ kind: 'modified', lineNum: op.lineA + 1, content: op.contentA, spans: spansA });
+        rowsB.push({ kind: 'modified', lineNum: op.lineB + 1, content: op.contentB, spans: spansB });
+        break;
+      }
+    }
+  }
+
+  return { rowsA, rowsB };
+}
+
+function tokenDiff(strA: string, strB: string): { spansA: CharSpan[]; spansB: CharSpan[] } {
+  // Split on JSON tokens: { } [ ] " : , and whitespace
+  const tokenRegex = /(\{|\}|\[|\]|"|:|,|\s+)/g;
+
+  const tokensA = strA.split(tokenRegex).filter(t => t !== '');
+  const tokensB = strB.split(tokenRegex).filter(t => t !== '');
+
+  // LCS on tokens
+  const dps = computeLCS(tokensA, tokensB);
+  if (dps.length === 0) {
+    return { spansA: [{ start: 0, end: strA.length }], spansB: [{ start: 0, end: strB.length }] };
+  }
+
+  // Backtrack to find matched tokens
+  const matchedA = new Set<number>();
+  const matchedB = new Set<number>();
+
+  let i = tokensA.length;
+  let j = tokensB.length;
+
+  while (i > 0 && j > 0) {
+    if (tokensA[i - 1] === tokensB[j - 1]) {
+      matchedA.add(i - 1);
+      matchedB.add(j - 1);
+      i--;
+      j--;
+    } else if (dps[i - 1][j] > dps[i][j - 1]) {
+      i--;
+    } else {
+      j--;
+    }
+  }
+
+  // Convert token indices to character spans
+  const getSpans = (tokens: string[], matched: Set<number>): CharSpan[] => {
+    let charPos = 0;
+    const spans: CharSpan[] = [];
+    let inSpan = false;
+    let spanStart = 0;
+
+    for (let idx = 0; idx < tokens.length; idx++) {
+      const token = tokens[idx];
+      const isMatched = matched.has(idx);
+
+      if (!isMatched) {
+        if (!inSpan) {
+          spanStart = charPos;
+          inSpan = true;
+        }
+      } else {
+        if (inSpan) {
+          spans.push({ start: spanStart, end: charPos });
+          inSpan = false;
+        }
+      }
+
+      charPos += token.length;
+    }
+
+    if (inSpan) {
+      spans.push({ start: spanStart, end: charPos });
+    }
+
+    return spans;
+  };
+
+  return {
+    spansA: getSpans(tokensA, matchedA),
+    spansB: getSpans(tokensB, matchedB)
+  };
+}
+
+function buildHunkHeaders(ops: DiffOp[], rowsA: AlignedRow[]): HunkHeader[] {
+  const headers: HunkHeader[] = [];
+  let inHunk = false;
+  let hunkStartRow = 0;
+  let hunkStartLineA = 0;
+  let hunkStartLineB = 0;
+  let hunkLastLineA = 0;
+  let hunkLastLineB = 0;
+
+  for (let row = 0; row < rowsA.length; row++) {
+    const row_a = rowsA[row];
+    const isChanged = row_a.kind !== 'unchanged';
+
+    if (isChanged && !inHunk) {
+      inHunk = true;
+      hunkStartRow = row;
+      hunkStartLineA = row_a.kind !== 'gap' ? (row_a as any).lineNum : hunkStartLineA;
+      hunkStartLineB = row < rowsA.length ? ((rowsA[row] as any)?.lineNum ?? 0) : 0;
+      hunkLastLineA = hunkStartLineA;
+      hunkLastLineB = hunkStartLineB;
+    } else if (isChanged && inHunk) {
+      if (row_a.kind !== 'gap') {
+        hunkLastLineA = (row_a as any).lineNum;
+      }
+    } else if (!isChanged && inHunk) {
+      // End of hunk
+      const numLinesA = hunkLastLineA - hunkStartLineA + 1;
+      const numLinesB = hunkLastLineB - hunkStartLineB + 1;
+
+      headers.push({
+        rowIndex: hunkStartRow,
+        rangeA: `-${hunkStartLineA},${numLinesA}`,
+        rangeB: `+${hunkStartLineB},${numLinesB}`,
+        pathA: undefined,
+        pathB: undefined
+      });
+
+      inHunk = false;
+    }
+  }
+
+  if (inHunk) {
+    const numLinesA = hunkLastLineA - hunkStartLineA + 1;
+    const numLinesB = hunkLastLineB - hunkStartLineB + 1;
+    headers.push({
+      rowIndex: hunkStartRow,
+      rangeA: `-${hunkStartLineA},${numLinesA}`,
+      rangeB: `+${hunkStartLineB},${numLinesB}`,
+      pathA: undefined,
+      pathB: undefined
+    });
+  }
+
+  return headers;
+}
+
+// ============ Sub-Components ============
+
+function HighlightedContent({ content, spans }: { content: string; spans?: CharSpan[] }) {
+  if (!spans || spans.length === 0) {
+    return <span>{content}</span>;
+  }
+
+  const parts = [];
+  let lastEnd = 0;
+
+  for (const span of spans) {
+    if (lastEnd < span.start) {
+      parts.push({ type: 'normal', text: content.slice(lastEnd, span.start) });
+    }
+    parts.push({ type: 'changed', text: content.slice(span.start, span.end) });
+    lastEnd = span.end;
+  }
+
+  if (lastEnd < content.length) {
+    parts.push({ type: 'normal', text: content.slice(lastEnd) });
+  }
+
+  return (
+    <>
+      {parts.map((part, idx) =>
+        part.type === 'changed' ? (
+          <span key={idx} className="bg-red-600/60 rounded px-0.5">
+            {part.text}
+          </span>
+        ) : (
+          <span key={idx}>{part.text}</span>
+        )
+      )}
+    </>
+  );
+}
+
+function HighlightedContentB({ content, spans }: { content: string; spans?: CharSpan[] }) {
+  if (!spans || spans.length === 0) {
+    return <span>{content}</span>;
+  }
+
+  const parts = [];
+  let lastEnd = 0;
+
+  for (const span of spans) {
+    if (lastEnd < span.start) {
+      parts.push({ type: 'normal', text: content.slice(lastEnd, span.start) });
+    }
+    parts.push({ type: 'changed', text: content.slice(span.start, span.end) });
+    lastEnd = span.end;
+  }
+
+  if (lastEnd < content.length) {
+    parts.push({ type: 'normal', text: content.slice(lastEnd) });
+  }
+
+  return (
+    <>
+      {parts.map((part, idx) =>
+        part.type === 'changed' ? (
+          <span key={idx} className="bg-green-600/60 rounded px-0.5">
+            {part.text}
+          </span>
+        ) : (
+          <span key={idx}>{part.text}</span>
+        )
+      )}
+    </>
+  );
+}
+
+function HunkHeaderRow({ header }: { header: HunkHeader }) {
+  return (
+    <div className="flex items-center bg-gray-800 dark:bg-gray-850 border-y border-gray-600 dark:border-gray-700 text-xs font-mono px-3 py-1 text-gray-400 sticky top-0 z-10">
+      <span className="text-red-400">{header.rangeA}</span>
+      {header.pathA && <span className="ml-2 text-gray-500">🔗 {header.pathA}</span>}
+      <span className="mx-4 text-gray-600">⚙</span>
+      <span className="text-green-400">{header.rangeB}</span>
+      {header.pathB && <span className="ml-2 text-gray-500">🔗 {header.pathB}</span>}
+    </div>
+  );
+}
+
+// ============ Main Component ============
 
 export default function ComparisonView() {
   const [jsonTextA, setJsonTextA] = useState('');
@@ -21,363 +428,117 @@ export default function ComparisonView() {
   const [parsedJsonB, setParsedJsonB] = useState<any>(null);
   const [errorA, setErrorA] = useState<string | null>(null);
   const [errorB, setErrorB] = useState<string | null>(null);
-  const [diffLinesA, setDiffLinesA] = useState<DiffLine[]>([]);
-  const [diffLinesB, setDiffLinesB] = useState<DiffLine[]>([]);
+  const [diffOps, setDiffOps] = useState<DiffOp[]>([]);
   const [hasCompared, setHasCompared] = useState(false);
   const [showLoadMenuA, setShowLoadMenuA] = useState(false);
   const [showLoadMenuB, setShowLoadMenuB] = useState(false);
-  const [leftWidth, setLeftWidth] = useState(50); // 50% default
+  const [leftWidth, setLeftWidth] = useState(50);
   const [isResizing, setIsResizing] = useState(false);
   const [currentDiffIndex, setCurrentDiffIndex] = useState(0);
-  const [unifiedDiffMode, setUnifiedDiffMode] = useState(false);
   const [ignoreKeyOrder, setIgnoreKeyOrder] = useState(false);
   const [showDiffOptions, setShowDiffOptions] = useState(false);
+
   const fileInputRefA = useRef<HTMLInputElement>(null);
   const fileInputRefB = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const panelARef = useRef<HTMLDivElement>(null);
+  const panelBRef = useRef<HTMLDivElement>(null);
   const diffLineRefsA = useRef<(HTMLDivElement | null)[]>([]);
   const diffLineRefsB = useRef<(HTMLDivElement | null)[]>([]);
   const dropdownRefA = useRef<HTMLDivElement>(null);
   const dropdownRefB = useRef<HTMLDivElement>(null);
+  const isSyncingRef = useRef(false);
 
   const comparisonJsonA = useAppStore((state) => state.comparisonJsonA);
   const activeTabId = useAppStore((state) => state.activeTabId);
   const tabs = useAppStore((state) => state.tabs);
 
-  // Function to find character-level differences between two strings
-  const findCharDiffs = (strA: string, strB: string) => {
-    const diffs: Array<{ start: number; end: number; type: 'added' | 'removed' | 'modified' }> = [];
-
-    const minLen = Math.min(strA.length, strB.length);
-
-    // Find first differing character
-    let diffStart = -1;
-    for (let i = 0; i < minLen; i++) {
-      if (strA[i] !== strB[i]) {
-        diffStart = i;
-        break;
-      }
+  // Validate and parse JSON
+  const validateAndParseA = useCallback((json: string) => {
+    const { valid, data, error } = validateJSON(json);
+    if (valid && data) {
+      setParsedJsonA(data);
+      setErrorA(null);
+    } else {
+      setParsedJsonA(null);
+      setErrorA(error ? error.message : 'Invalid JSON');
     }
+  }, []);
 
-    if (diffStart !== -1) {
-      // Find last differing character
-      let diffEnd = minLen - 1;
-      for (let i = minLen - 1; i >= diffStart; i--) {
-        if (strA[i] !== strB[i]) {
-          diffEnd = i;
-          break;
-        }
-      }
-
-      diffs.push({
-        start: diffStart,
-        end: diffEnd + 1,
-        type: 'modified'
-      });
+  const validateAndParseB = useCallback((json: string) => {
+    const { valid, data, error } = validateJSON(json);
+    if (valid && data) {
+      setParsedJsonB(data);
+      setErrorB(null);
+    } else {
+      setParsedJsonB(null);
+      setErrorB(error ? error.message : 'Invalid JSON');
     }
+  }, []);
 
-    // Handle length differences
-    if (strA.length !== strB.length) {
-      if (strA.length > strB.length) {
-        diffs.push({
-          start: strB.length,
-          end: strA.length,
-          type: 'removed'
-        });
-      } else {
-        diffs.push({
-          start: strA.length,
-          end: strB.length,
-          type: 'added'
-        });
-      }
-    }
-
-    return diffs.length > 0 ? diffs : undefined;
-  };
-
-  // Handle outside click to close dropdowns
+  // Handle click outside dropdowns
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRefA.current && !dropdownRefA.current.contains(event.target as Node)) {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownRefA.current && !dropdownRefA.current.contains(e.target as Node)) {
         setShowLoadMenuA(false);
       }
-      if (dropdownRefB.current && !dropdownRefB.current.contains(event.target as Node)) {
+      if (dropdownRefB.current && !dropdownRefB.current.contains(e.target as Node)) {
         setShowLoadMenuB(false);
       }
     };
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, []);
 
-    if (showLoadMenuA || showLoadMenuB) {
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => {
-        document.removeEventListener('mousedown', handleClickOutside);
-      };
-    }
-  }, [showLoadMenuA, showLoadMenuB]);
-
-  // Pre-fill JSON A from store if available
-  useEffect(() => {
-    if (comparisonJsonA && !jsonTextA) {
-      const formatted = JSON.stringify(comparisonJsonA, null, 2);
-      setJsonTextA(formatted);
-      setParsedJsonA(comparisonJsonA);
-    }
-  }, [comparisonJsonA]);
-
-  const validateAndParseA = () => {
-    if (!jsonTextA.trim()) {
-      setErrorA('JSON A is empty');
-      setParsedJsonA(null);
-      return false;
-    }
-
-    const result = validateJSON(jsonTextA);
-    if (result.valid && result.data) {
-      setParsedJsonA(result.data);
-      setErrorA(null);
-      return true;
-    } else if (result.error) {
-      setErrorA(`Line ${result.error.line}, Column ${result.error.column}: ${result.error.message}`);
-      setParsedJsonA(null);
-      return false;
-    }
-    return false;
-  };
-
-  const validateAndParseB = () => {
-    if (!jsonTextB.trim()) {
-      setErrorB('JSON B is empty');
-      setParsedJsonB(null);
-      return false;
-    }
-
-    const result = validateJSON(jsonTextB);
-    if (result.valid && result.data) {
-      setParsedJsonB(result.data);
-      setErrorB(null);
-      return true;
-    } else if (result.error) {
-      setErrorB(`Line ${result.error.line}, Column ${result.error.column}: ${result.error.message}`);
-      setParsedJsonB(null);
-      return false;
-    }
-    return false;
-  };
-
-  const handleCompare = () => {
-    const validA = validateAndParseA();
-    const validB = validateAndParseB();
-
-    if (!validA || !validB) {
-      showErrorToast('Please fix the JSON errors before comparing');
-      return;
-    }
-
-    setHasCompared(true);
-    setCurrentDiffIndex(0);
-    calculateDiff();
-  };
-
-  const calculateDiff = () => {
-    if (!parsedJsonA || !parsedJsonB) return;
-
-    const stringA = JSON.stringify(parsedJsonA, null, 2);
-    const stringB = JSON.stringify(parsedJsonB, null, 2);
-    const linesA = stringA.split('\n');
-    const linesB = stringB.split('\n');
-
-    const maxLines = Math.max(linesA.length, linesB.length);
-    const newDiffLinesA: DiffLine[] = [];
-    const newDiffLinesB: DiffLine[] = [];
-
-    for (let i = 0; i < maxLines; i++) {
-      const lineA = linesA[i];
-      const lineB = linesB[i];
-
-      if (lineA === undefined) {
-        newDiffLinesA.push({
-          type: 'removed',
-          lineNumber: i + 1,
-          content: '',
-          pair: i,
-        });
-        newDiffLinesB.push({
-          type: 'added',
-          lineNumber: i + 1,
-          content: lineB,
-          pair: i,
-        });
-      } else if (lineB === undefined) {
-        newDiffLinesA.push({
-          type: 'removed',
-          lineNumber: i + 1,
-          content: lineA,
-          pair: i,
-        });
-        newDiffLinesB.push({
-          type: 'added',
-          lineNumber: i + 1,
-          content: '',
-          pair: i,
-        });
-      } else if (lineA === lineB) {
-        newDiffLinesA.push({
-          type: 'unchanged',
-          lineNumber: i + 1,
-          content: lineA,
-          pair: i,
-        });
-        newDiffLinesB.push({
-          type: 'unchanged',
-          lineNumber: i + 1,
-          content: lineB,
-          pair: i,
-        });
-      } else {
-        // Lines are different - add character-level diff info
-        const charDiffs = findCharDiffs(lineA, lineB);
-        newDiffLinesA.push({
-          type: 'modified',
-          lineNumber: i + 1,
-          content: lineA,
-          pair: i,
-          charDiffs,
-        });
-        newDiffLinesB.push({
-          type: 'modified',
-          lineNumber: i + 1,
-          content: lineB,
-          pair: i,
-          charDiffs: findCharDiffs(lineB, lineA), // Reverse comparison for side B
-        });
-      }
-    }
-
-    setDiffLinesA(newDiffLinesA);
-    setDiffLinesB(newDiffLinesB);
-  };
-
-  const sortObjectsByKey = (obj: JSONValue): JSONValue => {
-    if (Array.isArray(obj)) {
-      return obj.map(sortObjectsByKey);
-    } else if (obj !== null && typeof obj === 'object') {
-      return Object.keys(obj)
-        .sort()
-        .reduce((result: Record<string, JSONValue>, key) => {
-          result[key] = sortObjectsByKey((obj as Record<string, JSONValue>)[key]);
-          return result;
-        }, {} as Record<string, JSONValue>);
-    }
-    return obj;
-  };
-
-  const handleCompareWithOptions = () => {
-    if (ignoreKeyOrder && parsedJsonA && parsedJsonB) {
-      const sortedA = sortObjectsByKey(parsedJsonA);
-      const sortedB = sortObjectsByKey(parsedJsonB);
-
-      // Compare sorted versions
-      const stringA = JSON.stringify(sortedA, null, 2);
-      const stringB = JSON.stringify(sortedB, null, 2);
-
-      if (stringA === stringB) {
-        showInfoToast('✓ JSONs are identical when ignoring key order');
-        setHasCompared(true);
-        setDiffLinesA([]);
-        setDiffLinesB([]);
-        return;
-      }
-    }
-
-    handleCompare();
-  };
-
-  const exportDiffReport = () => {
-    const timestamp = new Date().toLocaleString();
-    let report = `JSON Comparison Report\n`;
-    report += `Generated: ${timestamp}\n`;
-    report += `=${'='.repeat(60)}\n\n`;
-
-    report += `Comparison Settings:\n`;
-    report += `- Ignore Key Order: ${ignoreKeyOrder ? 'Yes' : 'No'}\n`;
-    report += `- Unified Diff Mode: ${unifiedDiffMode ? 'Yes' : 'No'}\n`;
-    report += `- Total Differences: ${diffLinesA.filter(l => l.type !== 'unchanged').length}\n\n`;
-
-    report += `=${'='.repeat(60)}\n`;
-    report += `SIDE BY SIDE COMPARISON\n`;
-    report += `=${'='.repeat(60)}\n\n`;
-
-    for (let i = 0; i < Math.max(diffLinesA.length, diffLinesB.length); i++) {
-      const lineA = diffLinesA[i];
-      const lineB = diffLinesB[i];
-
-      if (lineA?.type !== 'unchanged' || lineB?.type !== 'unchanged') {
-        report += `Line ${i + 1}:\n`;
-        if (lineA) {
-          report += `  < [${lineA.type.toUpperCase()}] ${lineA.content}\n`;
-        }
-        if (lineB) {
-          report += `  > [${lineB.type.toUpperCase()}] ${lineB.content}\n`;
-        }
-        report += '\n';
-      }
-    }
-
-    // Download as text file
-    const element = document.createElement('a');
-    element.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(report));
-    element.setAttribute('download', `json-diff-report-${Date.now()}.txt`);
-    element.style.display = 'none';
-    document.body.appendChild(element);
-    element.click();
-    document.body.removeChild(element);
-
-    showSuccessToast('✓ Diff report downloaded!');
-  };
-
-  // Auto-validate as user types
-  useEffect(() => {
-    if (jsonTextA.trim()) {
-      validateAndParseA();
-    } else {
-      setErrorA(null);
-      setParsedJsonA(null);
-    }
-  }, [jsonTextA]);
-
-  useEffect(() => {
-    if (jsonTextB.trim()) {
-      validateAndParseB();
-    } else {
-      setErrorB(null);
-      setParsedJsonB(null);
-    }
-  }, [jsonTextB]);
-
-  // Debounced diff recalculation (300ms) to avoid sluggish performance on large JSON
-  const diffTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
+  // Debounced diff calculation
   useEffect(() => {
     if (!hasCompared || !parsedJsonA || !parsedJsonB) return;
 
-    // Clear previous timeout
-    if (diffTimeoutRef.current) {
-      clearTimeout(diffTimeoutRef.current);
-    }
+    const timer = setTimeout(() => {
+      try {
+        let dataA = parsedJsonA;
+        let dataB = parsedJsonB;
 
-    // Set new debounced timeout
-    diffTimeoutRef.current = setTimeout(() => {
-      calculateDiff();
+        if (ignoreKeyOrder) {
+          const sortKeys = (obj: any): any => {
+            if (Array.isArray(obj)) return obj.map(sortKeys);
+            if (obj && typeof obj === 'object') {
+              const sorted: any = {};
+              Object.keys(obj)
+                .sort()
+                .forEach((key) => {
+                  sorted[key] = sortKeys(obj[key]);
+                });
+              return sorted;
+            }
+            return obj;
+          };
+          dataA = sortKeys(dataA);
+          dataB = sortKeys(dataB);
+        }
+
+        const strA = JSON.stringify(dataA, null, 2);
+        const strB = JSON.stringify(dataB, null, 2);
+
+        if (ignoreKeyOrder && strA === strB) {
+          showInfoToast('JSON objects are identical (ignoring key order)');
+          setDiffOps([]);
+          return;
+        }
+
+        const linesA = strA.split('\n');
+        const linesB = strB.split('\n');
+        const ops = buildDiffOps(linesA, linesB);
+        setDiffOps(ops);
+      } catch (err) {
+        showErrorToast('Failed to compute diff');
+      }
     }, 300);
 
-    return () => {
-      if (diffTimeoutRef.current) {
-        clearTimeout(diffTimeoutRef.current);
-      }
-    };
-  }, [parsedJsonA, parsedJsonB, hasCompared]);
+    return () => clearTimeout(timer);
+  }, [hasCompared, parsedJsonA, parsedJsonB, ignoreKeyOrder]);
 
-  // Handle resize
+  // Resize handler
   const handleMouseDown = (e: React.MouseEvent) => {
     e.preventDefault();
     setIsResizing(true);
@@ -390,7 +551,6 @@ export default function ComparisonView() {
       const containerRect = containerRef.current.getBoundingClientRect();
       const newLeftWidth = ((e.clientX - containerRect.left) / containerRect.width) * 100;
 
-      // Constrain between 20% and 80%
       if (newLeftWidth >= 20 && newLeftWidth <= 80) {
         setLeftWidth(newLeftWidth);
       }
@@ -411,484 +571,291 @@ export default function ComparisonView() {
     };
   }, [isResizing]);
 
-  const handleLoadFromOpenTab = (tabId: string, side: 'A' | 'B') => {
-    const tab = tabs.find((t) => t.id === tabId);
-    if (!tab?.content) {
-      showErrorToast('Selected tab has no data');
-      return;
-    }
-
-    const formatted = JSON.stringify(tab.content, null, 2);
-
-    if (side === 'A') {
-      setJsonTextA(formatted);
-      setParsedJsonA(tab.content);
-      setErrorA(null);
-      setShowLoadMenuA(false);
-    } else {
-      setJsonTextB(formatted);
-      setParsedJsonB(tab.content);
-      setErrorB(null);
-      setShowLoadMenuB(false);
-    }
-
-    showSuccessToast(`Loaded "${tab.label}" for comparison`);
-  };
-
-  const handleLoadFromURL = async (side: 'A' | 'B') => {
-    const url = prompt('Enter JSON URL:');
-    if (!url) return;
-
-    const toastId = showLoadingToast('Loading JSON from URL...');
-
-    try {
-      // Validate URL format
-      try {
-        new URL(url);
-      } catch {
-        dismissToast(toastId);
-        showErrorToast('Invalid URL format');
-        return;
-      }
-
-      const response = await fetch(url, {
-        headers: { 'Accept': 'application/json' },
-        timeout: 30000, // 30 second timeout
-      } as RequestInit);
-
-      if (!response.ok) {
-        dismissToast(toastId);
-        showErrorToast(`Failed to load URL: HTTP ${response.status} ${response.statusText}`);
-        return;
-      }
-
-      const contentType = response.headers.get('content-type');
-      if (!contentType?.includes('application/json')) {
-        dismissToast(toastId);
-        showErrorToast('Response is not valid JSON (invalid content-type)');
-        return;
-      }
-
-      const data = await response.json();
-
-      // Validate size before setting
-      const sizeValidation = validateJSONSize(data);
-      if (!sizeValidation.valid) {
-        dismissToast(toastId);
-        showErrorToast(`Failed to load URL: ${sizeValidation.message}`);
-        return;
-      }
-
-      const formatted = JSON.stringify(data, null, 2);
-
-      if (side === 'A') {
-        setJsonTextA(formatted);
-        setParsedJsonA(data);
-        setErrorA(null);
-        setShowLoadMenuA(false);
-      } else {
-        setJsonTextB(formatted);
-        setParsedJsonB(data);
-        setErrorB(null);
-        setShowLoadMenuB(false);
-      }
-
-      dismissToast(toastId);
-      showSuccessToast('JSON loaded successfully!');
-    } catch (err) {
-      dismissToast(toastId);
-      if (err instanceof TypeError && err.message.includes('Failed to fetch')) {
-        showErrorToast('Failed to load URL - CORS error or network issue');
-      } else {
-        showErrorToast(`Failed to load JSON: ${(err as Error).message}`);
-      }
-    }
-  };
-
-  const handleFileUpload = (side: 'A' | 'B', e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    // Validate file type
-    if (!file.name.endsWith('.json') && !file.name.endsWith('.jsonc')) {
-      showErrorToast('File must be a JSON file (.json or .jsonc)');
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const content = event.target?.result as string;
-        const result = validateJSON(content);
-
-        if (result.valid && result.data) {
-          // Validate JSON size
-          const sizeValidation = validateJSONSize(result.data);
-          if (!sizeValidation.valid) {
-            showErrorToast(`File load failed: ${sizeValidation.message}`);
-            return;
-          }
-
-          const formatted = JSON.stringify(result.data, null, 2);
-
-          if (side === 'A') {
-            setJsonTextA(formatted);
-            setParsedJsonA(result.data);
-            setErrorA(null);
-            setShowLoadMenuA(false);
-          } else {
-            setJsonTextB(formatted);
-            setParsedJsonB(result.data);
-            setErrorB(null);
-            setShowLoadMenuB(false);
-          }
-
-          showSuccessToast(`${file.name} loaded successfully!`);
+  // Load from open tab
+  const handleLoadFromOpenTab = useCallback(
+    (side: 'A' | 'B', tabId: string) => {
+      const tab = tabs.find((t) => t.id === tabId);
+      if (tab) {
+        const jsonStr = typeof tab.content === 'string' ? tab.content : JSON.stringify(tab.content, null, 2);
+        if (side === 'A') {
+          setJsonTextA(jsonStr);
+          validateAndParseA(jsonStr);
         } else {
-          showErrorToast(`Invalid JSON in file: ${result.error?.message || 'Unknown error'}`);
+          setJsonTextB(jsonStr);
+          validateAndParseB(jsonStr);
         }
+      }
+    },
+    [tabs, validateAndParseA, validateAndParseB]
+  );
+
+  // Load from URL
+  const handleLoadFromURL = useCallback(
+    async (side: 'A' | 'B') => {
+      const url = prompt(`Enter JSON ${side} URL:`);
+      if (!url) return;
+
+      const loadingId = showLoadingToast(`Loading JSON ${side}...`);
+
+      try {
+        const response = await fetch(url, { signal: AbortSignal.timeout(30000) });
+
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+        const contentType = response.headers.get('content-type');
+        if (contentType && !contentType.includes('application/json') && !contentType.includes('text')) {
+          throw new Error('Invalid MIME type');
+        }
+
+        const jsonStr = await response.text();
+        dismissToast(loadingId);
+
+        if (side === 'A') {
+          setJsonTextA(jsonStr);
+          validateAndParseA(jsonStr);
+        } else {
+          setJsonTextB(jsonStr);
+          validateAndParseB(jsonStr);
+        }
+
+        showSuccessToast(`JSON ${side} loaded`);
       } catch (err) {
-        showErrorToast(`Failed to process file: ${(err as Error).message}`);
+        dismissToast(loadingId);
+        showErrorToast(`Failed to load JSON ${side}: ${err instanceof Error ? err.message : 'Unknown error'}`);
       }
-    };
+    },
+    [validateAndParseA, validateAndParseB]
+  );
 
-    reader.onerror = (err) => {
-      showErrorToast(`Failed to read file: ${(err as any).name || 'Unknown error'}`);
-    };
+  // File upload
+  const handleFileUpload = useCallback(
+    async (side: 'A' | 'B', e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
 
-    reader.readAsText(file);
-  };
-
-  const getLineStyle = (type: DiffLine['type']) => {
-    switch (type) {
-      case 'added':
-        return 'bg-green-100 dark:bg-green-900/30 border-l-4 border-green-500';
-      case 'removed':
-        return 'bg-red-100 dark:bg-red-900/30 border-l-4 border-red-500';
-      case 'modified':
-        return 'bg-yellow-100 dark:bg-yellow-900/30 border-l-4 border-yellow-500';
-      default:
-        return 'bg-white dark:bg-gray-900';
-    }
-  };
-
-  const getLinePrefix = (type: DiffLine['type'], side: 'A' | 'B') => {
-    if (type === 'unchanged') return '  ';
-    if (type === 'added') return side === 'B' ? '+ ' : '  ';
-    if (type === 'removed') return side === 'A' ? '- ' : '  ';
-    if (type === 'modified') return side === 'A' ? '- ' : '+ ';
-    return '  ';
-  };
-
-  // Component to render text with character-level highlighting
-  const HighlightedText = ({ line, charDiffs }: { line: DiffLine; charDiffs?: Array<{ start: number; end: number; type: 'added' | 'removed' | 'modified' }> }) => {
-    if (!charDiffs || charDiffs.length === 0) {
-      return <>{line.content || '\u00A0'}</>;
-    }
-
-    const parts: React.ReactNode[] = [];
-    let lastIndex = 0;
-
-    charDiffs.forEach((diff) => {
-      // Add normal text before this diff
-      if (lastIndex < diff.start) {
-        parts.push(
-          <span key={`normal-${lastIndex}`}>
-            {line.content.substring(lastIndex, diff.start)}
-          </span>
-        );
+      const sizeValidation = validateFileSize(file);
+      if (!sizeValidation.valid) {
+        showErrorToast(sizeValidation.message || 'File too large');
+        return;
       }
 
-      // Add highlighted diff text
-      const diffText = line.content.substring(diff.start, diff.end);
-      if (diff.type === 'modified') {
-        parts.push(
-          <span key={`diff-${diff.start}`} className="bg-red-300 dark:bg-red-700 px-0.5 font-semibold rounded">
-            {diffText}
-          </span>
-        );
-      } else if (diff.type === 'removed') {
-        parts.push(
-          <span key={`diff-${diff.start}`} className="bg-red-400 dark:bg-red-800 px-0.5 line-through font-semibold rounded">
-            {diffText}
-          </span>
-        );
-      } else {
-        parts.push(
-          <span key={`diff-${diff.start}`} className="bg-green-300 dark:bg-green-700 px-0.5 font-semibold rounded underline">
-            {diffText}
-          </span>
-        );
+      try {
+        const text = await file.text();
+        const jsonValidation = validateJSONSize(text);
+        if (!jsonValidation.valid) {
+          showErrorToast(jsonValidation.message || 'JSON too large');
+          return;
+        }
+
+        if (side === 'A') {
+          setJsonTextA(text);
+          validateAndParseA(text);
+        } else {
+          setJsonTextB(text);
+          validateAndParseB(text);
+        }
+
+        showSuccessToast(`JSON ${side} loaded from file`);
+      } catch (err) {
+        showErrorToast(`Failed to read file: ${err instanceof Error ? err.message : 'Unknown error'}`);
       }
+    },
+    [validateAndParseA, validateAndParseB]
+  );
 
-      lastIndex = diff.end;
-    });
+  // Derived values
+  const { rowsA, rowsB } = useMemo(() => buildAlignedRows(diffOps), [diffOps]);
+  const hunkHeaders = useMemo(() => buildHunkHeaders(diffOps, rowsA), [diffOps, rowsA]);
 
-    // Add remaining text after last diff
-    if (lastIndex < line.content.length) {
-      parts.push(
-        <span key={`normal-${lastIndex}`}>
-          {line.content.substring(lastIndex)}
-        </span>
-      );
+  const diffSummary = useMemo(
+    () => ({
+      added: diffOps.filter((o) => o.kind === 'added').length,
+      removed: diffOps.filter((o) => o.kind === 'removed').length,
+      modified: diffOps.filter((o) => o.kind === 'modified').length
+    }),
+    [diffOps]
+  );
+
+  const diffOpIndices = useMemo(
+    () => rowsA.map((r, i) => (r.kind !== 'unchanged' ? i : -1)).filter((i) => i !== -1),
+    [rowsA]
+  );
+
+  const hasDifferences = diffSummary.added + diffSummary.removed + diffSummary.modified > 0;
+
+  // Navigation
+  const scrollToDiff = useCallback(
+    (rowIndex: number) => {
+      const elA = diffLineRefsA.current[rowIndex];
+      const elB = diffLineRefsB.current[rowIndex];
+      if (elA) elA.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      if (elB) elB.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    },
+    []
+  );
+
+  const handleNextDiff = useCallback(() => {
+    if (currentDiffIndex < diffOpIndices.length - 1) {
+      const nextIndex = currentDiffIndex + 1;
+      setCurrentDiffIndex(nextIndex);
+      scrollToDiff(diffOpIndices[nextIndex]);
     }
+  }, [currentDiffIndex, diffOpIndices, scrollToDiff]);
 
-    return <>{parts}</>;
-  };
-
-  const hasDifferences = diffLinesA.some(line => line.type !== 'unchanged');
-  const canCompare = jsonTextA.trim() && jsonTextB.trim() && parsedJsonA && parsedJsonB && !errorA && !errorB;
-
-  // Get indices of all differences
-  const diffIndices = diffLinesA
-    .map((line, index) => line.type !== 'unchanged' ? index : -1)
-    .filter(index => index !== -1);
-
-  const totalDifferences = diffIndices.length;
-
-  const scrollToDiff = (diffIndex: number) => {
-    if (diffIndex < 0 || diffIndex >= diffIndices.length) return;
-
-    const actualLineIndex = diffIndices[diffIndex];
-
-    // Scroll both panels to the difference
-    if (diffLineRefsA.current[actualLineIndex]) {
-      diffLineRefsA.current[actualLineIndex]?.scrollIntoView({
-        behavior: 'smooth',
-        block: 'center',
-      });
-    }
-    if (diffLineRefsB.current[actualLineIndex]) {
-      diffLineRefsB.current[actualLineIndex]?.scrollIntoView({
-        behavior: 'smooth',
-        block: 'center',
-      });
-    }
-
-    setCurrentDiffIndex(diffIndex);
-  };
-
-  const handleNextDiff = () => {
-    if (currentDiffIndex < totalDifferences - 1) {
-      scrollToDiff(currentDiffIndex + 1);
-    }
-  };
-
-  const handlePrevDiff = () => {
+  const handlePrevDiff = useCallback(() => {
     if (currentDiffIndex > 0) {
-      scrollToDiff(currentDiffIndex - 1);
+      const prevIndex = currentDiffIndex - 1;
+      setCurrentDiffIndex(prevIndex);
+      scrollToDiff(diffOpIndices[prevIndex]);
     }
-  };
+  }, [currentDiffIndex, diffOpIndices, scrollToDiff]);
+
+  // Scroll sync
+  const handleScrollA = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    if (isSyncingRef.current || !panelBRef.current) return;
+    isSyncingRef.current = true;
+    panelBRef.current.scrollTop = e.currentTarget.scrollTop;
+    isSyncingRef.current = false;
+  }, []);
+
+  const handleScrollB = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    if (isSyncingRef.current || !panelARef.current) return;
+    isSyncingRef.current = true;
+    panelARef.current.scrollTop = e.currentTarget.scrollTop;
+    isSyncingRef.current = false;
+  }, []);
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full flex flex-col bg-gray-900 text-gray-100 overflow-hidden">
       {/* Header */}
-      <div className="h-12 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 flex items-center justify-between">
-        <h3 className="font-semibold">JSON Comparison</h3>
-        <div className="flex items-center gap-4">
-          {hasCompared && hasDifferences && (
+      <div className="h-12 border-b border-gray-700 px-4 flex items-center justify-between flex-shrink-0">
+        <h2 className="font-bold text-lg">JSON Comparison</h2>
+
+        <div className="flex items-center gap-2">
+          {hasCompared && (
             <>
-              <div className="flex gap-4 text-xs">
-                <div className="flex items-center gap-1">
-                  <div className="w-3 h-3 bg-green-500 rounded"></div>
-                  <span className="text-gray-600 dark:text-gray-400">Added</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <div className="w-3 h-3 bg-red-500 rounded"></div>
-                  <span className="text-gray-600 dark:text-gray-400">Removed</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <div className="w-3 h-3 bg-yellow-500 rounded"></div>
-                  <span className="text-gray-600 dark:text-gray-400">Modified</span>
-                </div>
+              <div className="flex items-center gap-1 text-xs">
+                <span className="inline-block w-2 h-2 rounded-full bg-green-500"></span>
+                <span>{diffSummary.added}</span>
+                <span className="inline-block w-2 h-2 rounded-full bg-red-500 ml-2"></span>
+                <span>{diffSummary.removed}</span>
+                <span className="inline-block w-2 h-2 rounded-full bg-amber-500 ml-2"></span>
+                <span>{diffSummary.modified}</span>
               </div>
 
-              {/* Navigation Controls */}
-              <div className="flex items-center gap-2 border-l pl-4 border-gray-300 dark:border-gray-600">
+              <div className="flex items-center gap-1 border-l border-gray-700 pl-2 ml-2">
                 <button
                   onClick={handlePrevDiff}
-                  disabled={currentDiffIndex === 0}
-                  className="p-1.5 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-30 disabled:cursor-not-allowed rounded transition-colors"
-                  title="Previous difference"
+                  disabled={currentDiffIndex <= 0}
+                  className="p-1 hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed rounded"
                 >
                   <ChevronUp className="w-4 h-4" />
                 </button>
-                <span className="text-sm font-mono text-gray-700 dark:text-gray-300 min-w-[60px] text-center">
-                  {totalDifferences > 0 ? `${currentDiffIndex + 1}/${totalDifferences}` : '0/0'}
+                <span className="text-xs text-gray-400">
+                  {diffOpIndices.length > 0 ? currentDiffIndex + 1 : 0}/{diffOpIndices.length}
                 </span>
                 <button
                   onClick={handleNextDiff}
-                  disabled={currentDiffIndex >= totalDifferences - 1}
-                  className="p-1.5 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-30 disabled:cursor-not-allowed rounded transition-colors"
-                  title="Next difference"
+                  disabled={currentDiffIndex >= diffOpIndices.length - 1}
+                  className="p-1 hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed rounded"
                 >
                   <ChevronDown className="w-4 h-4" />
                 </button>
               </div>
-
-              {/* Comparison Options */}
-              <div className="flex items-center gap-2 border-l pl-4 border-gray-300 dark:border-gray-600">
-                <button
-                  onClick={() => setShowDiffOptions(!showDiffOptions)}
-                  className="p-1.5 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded transition-colors"
-                  title="Comparison options"
-                >
-                  <Settings2 className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={exportDiffReport}
-                  className="p-1.5 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded transition-colors"
-                  title="Export diff report"
-                >
-                  <FileText className="w-4 h-4" />
-                </button>
-              </div>
             </>
           )}
+
           <button
-            onClick={handleCompareWithOptions}
-            disabled={!canCompare}
-            className="px-4 py-1.5 bg-primary-500 hover:bg-primary-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors text-sm"
-            title={!canCompare ? 'Fix JSON errors before comparing' : 'Compare JSON A and B'}
+            onClick={() => setShowDiffOptions(!showDiffOptions)}
+            className="ml-auto p-1 hover:bg-gray-700 rounded"
+            title="Options"
           >
-            {hasCompared ? 'Re-Compare' : 'Compare'}
+            <Settings2 className="w-4 h-4" />
+          </button>
+
+          <button
+            onClick={() => {
+              if (!parsedJsonA || !parsedJsonB) {
+                showErrorToast('Both JSON inputs must be valid');
+                return;
+              }
+              setHasCompared(!hasCompared);
+              if (!hasCompared) {
+                setCurrentDiffIndex(0);
+              }
+            }}
+            className="px-3 py-1 bg-primary-500 hover:bg-primary-600 rounded text-sm font-medium transition-colors"
+          >
+            {hasCompared ? 'Edit' : 'Compare'}
           </button>
         </div>
       </div>
 
-      {/* Comparison Options Panel */}
+      {/* Options Panel */}
       {showDiffOptions && (
-        <div className="h-12 bg-gray-50 dark:bg-gray-750 border-b border-gray-200 dark:border-gray-700 px-4 flex items-center gap-6">
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={unifiedDiffMode}
-              onChange={(e) => setUnifiedDiffMode(e.target.checked)}
-              className="w-4 h-4 rounded border-gray-300 text-primary-600 focus:ring-2 focus:ring-primary-500"
-            />
-            <span className="text-sm text-gray-700 dark:text-gray-300">Unified Diff Mode</span>
-          </label>
-          <label className="flex items-center gap-2 cursor-pointer">
+        <div className="h-10 border-b border-gray-700 px-4 flex items-center gap-4 bg-gray-800/50 flex-shrink-0">
+          <label className="flex items-center gap-2 text-xs cursor-pointer">
             <input
               type="checkbox"
               checked={ignoreKeyOrder}
               onChange={(e) => setIgnoreKeyOrder(e.target.checked)}
-              className="w-4 h-4 rounded border-gray-300 text-primary-600 focus:ring-2 focus:ring-primary-500"
+              className="w-4 h-4"
             />
-            <span className="text-sm text-gray-700 dark:text-gray-300">Ignore Key Order</span>
+            Ignore Key Order
           </label>
         </div>
       )}
 
-      {/* Unified Diff View */}
-      {unifiedDiffMode && hasCompared && (
-        <div className="flex-1 overflow-auto">
-          {diffLinesA.map((line, index) => (
-            <div
-              key={`a-${index}`}
-              className={`flex font-mono text-xs leading-relaxed ${
-                line.type === 'added'
-                  ? 'bg-green-50 dark:bg-green-900/20'
-                  : line.type === 'removed'
-                  ? 'bg-red-50 dark:bg-red-900/20'
-                  : line.type === 'modified'
-                  ? 'bg-yellow-50 dark:bg-yellow-900/20'
-                  : ''
-              }`}
-            >
-              <span className="w-12 flex-shrink-0 text-right pr-2 text-gray-500 dark:text-gray-400 select-none border-r border-gray-300 dark:border-gray-600">
-                {line.content ? line.lineNumber : ''}
-              </span>
-              <span className="w-6 flex-shrink-0 text-center font-bold select-none text-red-600 dark:text-red-400">
-                -
-              </span>
-              <span className="flex-1 px-2 whitespace-nowrap overflow-x-auto">
-                <HighlightedText line={line} charDiffs={line.charDiffs} />
-              </span>
-            </div>
-          ))}
-          {diffLinesB.map((line, index) => (
-            <div
-              key={`b-${index}`}
-              className={`flex font-mono text-xs leading-relaxed ${
-                line.type === 'added'
-                  ? 'bg-green-50 dark:bg-green-900/20'
-                  : line.type === 'removed'
-                  ? 'bg-red-50 dark:bg-red-900/20'
-                  : line.type === 'modified'
-                  ? 'bg-yellow-50 dark:bg-yellow-900/20'
-                  : ''
-              }`}
-            >
-              <span className="w-12 flex-shrink-0 text-right pr-2 text-gray-500 dark:text-gray-400 select-none border-r border-gray-300 dark:border-gray-600">
-                {line.content ? line.lineNumber : ''}
-              </span>
-              <span className="w-6 flex-shrink-0 text-center font-bold select-none text-green-600 dark:text-green-400">
-                +
-              </span>
-              <span className="flex-1 px-2 whitespace-nowrap overflow-x-auto">
-                <HighlightedText line={line} charDiffs={line.charDiffs} />
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Side-by-side Diff View */}
-      {!unifiedDiffMode && (
-      <div ref={containerRef} className="flex-1 flex overflow-hidden relative">
-        {/* JSON A */}
-        <div
-          className="flex flex-col border-r border-gray-200 dark:border-gray-700"
-          style={{ width: `${leftWidth}%` }}
-        >
-          <div className="h-10 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 flex items-center justify-between">
-            <span className="font-medium text-sm">JSON A</span>
-            <div className="relative" ref={dropdownRefA}>
-              <button
-                onClick={() => setShowLoadMenuA(!showLoadMenuA)}
-                className="px-3 py-1 text-xs bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 rounded transition-colors flex items-center gap-1"
-              >
-                Load <span className="ml-1">▼</span>
-              </button>
-              {showLoadMenuA && (
-                <div className="absolute right-0 top-full mt-1 w-48 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl z-20 py-1 max-h-64 overflow-y-auto">
-                  {tabs.filter((t) => t.id !== activeTabId && t.content).length > 0 && (
-                    <>
-                      <div className="px-4 py-2 text-xs font-semibold text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-900 sticky top-0">
-                        Open Tabs
-                      </div>
-                      {tabs
-                        .filter((t) => t.id !== activeTabId && t.content)
-                        .map((tab) => (
-                          <button
-                            key={tab.id}
-                            onClick={() => handleLoadFromOpenTab(tab.id, 'A')}
-                            className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors truncate"
-                            title={tab.label}
-                          >
-                            {tab.label}
-                          </button>
-                        ))}
-                      <div className="border-t border-gray-200 dark:border-gray-700 my-1" />
-                    </>
-                  )}
-                  <button
-                    onClick={() => handleLoadFromURL('A')}
-                    className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center gap-2"
-                  >
-                    <LinkIcon className="w-4 h-4" />
-                    Load from URL
-                  </button>
-                  <button
-                    onClick={() => fileInputRefA.current?.click()}
-                    className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center gap-2"
-                  >
-                    <Upload className="w-4 h-4" />
-                    Upload File
-                  </button>
-                </div>
-              )}
+      {/* Main Content */}
+      {!hasCompared ? (
+        <div ref={containerRef} className="flex-1 flex overflow-hidden">
+          {/* JSON A Input */}
+          <div className="flex-1 flex flex-col border-r border-gray-700">
+            <div className="h-10 bg-gray-800 border-b border-gray-700 px-3 flex items-center justify-between">
+              <span className="text-xs font-semibold">JSON A</span>
+              <div ref={dropdownRefA} className="relative">
+                <button
+                  onClick={() => setShowLoadMenuA(!showLoadMenuA)}
+                  className="px-2 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded transition-colors"
+                >
+                  Load
+                </button>
+                {showLoadMenuA && (
+                  <div className="absolute right-0 mt-1 bg-gray-800 border border-gray-700 rounded shadow-lg z-50 min-w-32">
+                    <button
+                      onClick={() => {
+                        fileInputRefA.current?.click();
+                        setShowLoadMenuA(false);
+                      }}
+                      className="block w-full text-left px-3 py-1 text-xs hover:bg-gray-700"
+                    >
+                      File
+                    </button>
+                    <button
+                      onClick={() => {
+                        handleLoadFromURL('A');
+                        setShowLoadMenuA(false);
+                      }}
+                      className="block w-full text-left px-3 py-1 text-xs hover:bg-gray-700"
+                    >
+                      URL
+                    </button>
+                    {tabs.length > 0 && <div className="border-t border-gray-700 my-1"></div>}
+                    {tabs.map((tab) => (
+                      <button
+                        key={tab.id}
+                        onClick={() => {
+                          handleLoadFromOpenTab('A', tab.id);
+                          setShowLoadMenuA(false);
+                        }}
+                        className="block w-full text-left px-3 py-1 text-xs hover:bg-gray-700 truncate"
+                      >
+                        {tab.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
               <input
                 ref={fileInputRefA}
                 type="file"
@@ -897,109 +864,86 @@ export default function ComparisonView() {
                 className="hidden"
               />
             </div>
+
+            <textarea
+              value={jsonTextA}
+              onChange={(e) => {
+                setJsonTextA(e.target.value);
+                validateAndParseA(e.target.value);
+              }}
+              placeholder='Paste JSON A here... { "key": "value" }'
+              className="flex-1 p-4 bg-gray-950 font-mono text-sm resize-none focus:outline-none border-none text-gray-100"
+            />
+
+            {errorA && (
+              <div className="p-3 bg-red-900/30 border-t border-red-800 text-red-300 text-xs">
+                <div className="font-semibold mb-1">❌ Invalid JSON A:</div>
+                {errorA}
+              </div>
+            )}
+            {!errorA && parsedJsonA && (
+              <div className="p-3 bg-green-900/30 border-t border-green-800 text-green-300 text-xs">
+                ✓ Valid JSON
+              </div>
+            )}
           </div>
 
-          {!hasCompared ? (
-            <div className="flex-1 flex flex-col overflow-hidden">
-              <textarea
-                value={jsonTextA}
-                onChange={(e) => setJsonTextA(e.target.value)}
-                placeholder='Paste JSON A here... { "key": "value" }'
-                className="flex-1 p-4 bg-white dark:bg-gray-900 font-mono text-sm resize-none focus:outline-none border-none"
-              />
-              {errorA && (
-                <div className="p-3 bg-red-50 dark:bg-red-900/20 border-t border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 text-xs">
-                  <div className="font-semibold mb-1">❌ Invalid JSON A:</div>
-                  {errorA}
-                </div>
-              )}
-              {!errorA && parsedJsonA && (
-                <div className="p-3 bg-green-50 dark:bg-green-900/20 border-t border-green-200 dark:border-green-800 text-green-700 dark:text-green-300 text-xs">
-                  ✓ Valid JSON
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="flex-1 overflow-auto">
-              {diffLinesA.map((line, index) => (
-                <div
-                  key={index}
-                  ref={(el) => { diffLineRefsA.current[index] = el; }}
-                  className={`flex font-mono text-xs leading-relaxed ${getLineStyle(line.type)}`}
+          {/* Resizer */}
+          <div
+            onMouseDown={handleMouseDown}
+            className="w-1 bg-gray-700 hover:bg-primary-500 cursor-col-resize transition-colors flex-shrink-0 relative group"
+            title="Drag to resize panels"
+          >
+            <div className="absolute inset-y-0 -left-1 -right-1" />
+          </div>
+
+          {/* JSON B Input */}
+          <div className="flex-1 flex flex-col">
+            <div className="h-10 bg-gray-800 border-b border-gray-700 px-3 flex items-center justify-between">
+              <span className="text-xs font-semibold">JSON B</span>
+              <div ref={dropdownRefB} className="relative">
+                <button
+                  onClick={() => setShowLoadMenuB(!showLoadMenuB)}
+                  className="px-2 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded transition-colors"
                 >
-                  <span className="w-12 flex-shrink-0 text-right pr-2 text-gray-500 dark:text-gray-400 select-none border-r border-gray-300 dark:border-gray-600">
-                    {line.content ? line.lineNumber : ''}
-                  </span>
-                  <span className="w-6 flex-shrink-0 text-center font-bold select-none">
-                    {getLinePrefix(line.type, 'A')}
-                  </span>
-                  <span className="flex-1 px-2 whitespace-nowrap overflow-x-auto">
-                    <HighlightedText line={line} charDiffs={line.charDiffs} />
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Resizer */}
-        <div
-          onMouseDown={handleMouseDown}
-          className="w-1 bg-gray-300 dark:bg-gray-600 hover:bg-primary-500 dark:hover:bg-primary-500 cursor-col-resize transition-colors flex-shrink-0 relative group"
-          title="Drag to resize panels"
-        >
-          <div className="absolute inset-y-0 -left-1 -right-1" />
-        </div>
-
-        {/* JSON B */}
-        <div className="flex-1 flex flex-col">
-          <div className="h-10 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 flex items-center justify-between">
-            <span className="font-medium text-sm">JSON B</span>
-            <div className="relative" ref={dropdownRefB}>
-              <button
-                onClick={() => setShowLoadMenuB(!showLoadMenuB)}
-                className="px-3 py-1 text-xs bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 rounded transition-colors flex items-center gap-1"
-              >
-                Load <span className="ml-1">▼</span>
-              </button>
-              {showLoadMenuB && (
-                <div className="absolute right-0 top-full mt-1 w-48 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl z-20 py-1 max-h-64 overflow-y-auto">
-                  {tabs.filter((t) => t.id !== activeTabId && t.content).length > 0 && (
-                    <>
-                      <div className="px-4 py-2 text-xs font-semibold text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-900 sticky top-0">
-                        Open Tabs
-                      </div>
-                      {tabs
-                        .filter((t) => t.id !== activeTabId && t.content)
-                        .map((tab) => (
-                          <button
-                            key={tab.id}
-                            onClick={() => handleLoadFromOpenTab(tab.id, 'B')}
-                            className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors truncate"
-                            title={tab.label}
-                          >
-                            {tab.label}
-                          </button>
-                        ))}
-                      <div className="border-t border-gray-200 dark:border-gray-700 my-1" />
-                    </>
-                  )}
-                  <button
-                    onClick={() => handleLoadFromURL('B')}
-                    className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center gap-2"
-                  >
-                    <LinkIcon className="w-4 h-4" />
-                    Load from URL
-                  </button>
-                  <button
-                    onClick={() => fileInputRefB.current?.click()}
-                    className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center gap-2"
-                  >
-                    <Upload className="w-4 h-4" />
-                    Upload File
-                  </button>
-                </div>
-              )}
+                  Load
+                </button>
+                {showLoadMenuB && (
+                  <div className="absolute right-0 mt-1 bg-gray-800 border border-gray-700 rounded shadow-lg z-50 min-w-32">
+                    <button
+                      onClick={() => {
+                        fileInputRefB.current?.click();
+                        setShowLoadMenuB(false);
+                      }}
+                      className="block w-full text-left px-3 py-1 text-xs hover:bg-gray-700"
+                    >
+                      File
+                    </button>
+                    <button
+                      onClick={() => {
+                        handleLoadFromURL('B');
+                        setShowLoadMenuB(false);
+                      }}
+                      className="block w-full text-left px-3 py-1 text-xs hover:bg-gray-700"
+                    >
+                      URL
+                    </button>
+                    {tabs.length > 0 && <div className="border-t border-gray-700 my-1"></div>}
+                    {tabs.map((tab) => (
+                      <button
+                        key={tab.id}
+                        onClick={() => {
+                          handleLoadFromOpenTab('B', tab.id);
+                          setShowLoadMenuB(false);
+                        }}
+                        className="block w-full text-left px-3 py-1 text-xs hover:bg-gray-700 truncate"
+                      >
+                        {tab.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
               <input
                 ref={fileInputRefB}
                 type="file"
@@ -1008,84 +952,170 @@ export default function ComparisonView() {
                 className="hidden"
               />
             </div>
+
+            <textarea
+              value={jsonTextB}
+              onChange={(e) => {
+                setJsonTextB(e.target.value);
+                validateAndParseB(e.target.value);
+              }}
+              placeholder='Paste JSON B here... { "key": "value" }'
+              className="flex-1 p-4 bg-gray-950 font-mono text-sm resize-none focus:outline-none border-none text-gray-100"
+            />
+
+            {errorB && (
+              <div className="p-3 bg-red-900/30 border-t border-red-800 text-red-300 text-xs">
+                <div className="font-semibold mb-1">❌ Invalid JSON B:</div>
+                {errorB}
+              </div>
+            )}
+            {!errorB && parsedJsonB && (
+              <div className="p-3 bg-green-900/30 border-t border-green-800 text-green-300 text-xs">
+                ✓ Valid JSON
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        // Diff View
+        <div ref={containerRef} className="flex-1 flex overflow-hidden">
+          {/* Panel A */}
+          <div
+            ref={panelARef}
+            onScroll={handleScrollA}
+            className="flex flex-col border-r border-gray-700"
+            style={{ width: `${leftWidth}%` }}
+          >
+            <div className="h-10 bg-gray-800 border-b border-gray-700 px-3 flex items-center text-xs font-semibold flex-shrink-0">
+              JSON A
+            </div>
+
+            <div className="flex-1 overflow-auto">
+              {rowsA.map((row, index) => {
+                const hunk = hunkHeaders.find((h) => h.rowIndex === index);
+                const getRowBg = () => {
+                  switch (row.kind) {
+                    case 'unchanged':
+                      return 'bg-gray-950';
+                    case 'removed':
+                      return 'bg-red-900/40';
+                    case 'added':
+                      return 'bg-gray-950';
+                    case 'modified':
+                      return 'bg-amber-900/30';
+                    case 'gap':
+                      return 'bg-gray-800/50';
+                    default:
+                      return 'bg-gray-950';
+                  }
+                };
+
+                return (
+                  <Fragment key={index}>
+                    {hunk && <HunkHeaderRow header={hunk} />}
+                    <div
+                      ref={(el) => {
+                        diffLineRefsA.current[index] = el;
+                      }}
+                      className={`flex font-mono text-xs leading-5 ${getRowBg()}`}
+                      style={row.kind === 'gap' ? { backgroundImage: DIAGONAL_STRIPE } : undefined}
+                    >
+                      <span className="w-10 flex-shrink-0 text-right pr-2 text-gray-600 select-none border-r border-gray-700">
+                        {row.kind !== 'gap' ? row.lineNum : ''}
+                      </span>
+                      <span className="flex-1 pl-3 whitespace-pre overflow-x-hidden text-gray-300">
+                        {row.kind !== 'gap' && (
+                          <HighlightedContent content={row.content} spans={(row as any).spans} />
+                        )}
+                      </span>
+                    </div>
+                  </Fragment>
+                );
+              })}
+            </div>
           </div>
 
-          {!hasCompared ? (
-            <div className="flex-1 flex flex-col overflow-hidden">
-              <textarea
-                value={jsonTextB}
-                onChange={(e) => setJsonTextB(e.target.value)}
-                placeholder='Paste JSON B here... { "key": "value" }'
-                className="flex-1 p-4 bg-white dark:bg-gray-900 font-mono text-sm resize-none focus:outline-none border-none"
-              />
-              {errorB && (
-                <div className="p-3 bg-red-50 dark:bg-red-900/20 border-t border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 text-xs">
-                  <div className="font-semibold mb-1">❌ Invalid JSON B:</div>
-                  {errorB}
-                </div>
-              )}
-              {!errorB && parsedJsonB && (
-                <div className="p-3 bg-green-50 dark:bg-green-900/20 border-t border-green-200 dark:border-green-800 text-green-700 dark:text-green-300 text-xs">
-                  ✓ Valid JSON
-                </div>
-              )}
+          {/* Resizer */}
+          <div
+            onMouseDown={handleMouseDown}
+            className="w-1 bg-gray-700 hover:bg-primary-500 cursor-col-resize transition-colors flex-shrink-0"
+            title="Drag to resize panels"
+          />
+
+          {/* Panel B */}
+          <div
+            ref={panelBRef}
+            onScroll={handleScrollB}
+            className="flex-1 flex flex-col border-l border-gray-700"
+          >
+            <div className="h-10 bg-gray-800 border-b border-gray-700 px-3 flex items-center text-xs font-semibold flex-shrink-0">
+              JSON B
             </div>
-          ) : (
+
             <div className="flex-1 overflow-auto">
-              {diffLinesB.map((line, index) => (
-                <div
-                  key={index}
-                  ref={(el) => { diffLineRefsB.current[index] = el; }}
-                  className={`flex font-mono text-xs leading-relaxed ${getLineStyle(line.type)}`}
-                >
-                  <span className="w-12 flex-shrink-0 text-right pr-2 text-gray-500 dark:text-gray-400 select-none border-r border-gray-300 dark:border-gray-600">
-                    {line.content ? line.lineNumber : ''}
-                  </span>
-                  <span className="w-6 flex-shrink-0 text-center font-bold select-none">
-                    {getLinePrefix(line.type, 'B')}
-                  </span>
-                  <span className="flex-1 px-2 whitespace-nowrap overflow-x-auto">
-                    <HighlightedText line={line} charDiffs={line.charDiffs} />
-                  </span>
-                </div>
-              ))}
+              {rowsB.map((row, index) => {
+                const getRowBg = () => {
+                  switch (row.kind) {
+                    case 'unchanged':
+                      return 'bg-gray-950';
+                    case 'removed':
+                      return 'bg-gray-800/50';
+                    case 'added':
+                      return 'bg-green-900/40';
+                    case 'modified':
+                      return 'bg-amber-900/30';
+                    case 'gap':
+                      return 'bg-gray-800/50';
+                    default:
+                      return 'bg-gray-950';
+                  }
+                };
+
+                return (
+                  <div
+                    key={index}
+                    ref={(el) => {
+                      diffLineRefsB.current[index] = el;
+                    }}
+                    className={`flex font-mono text-xs leading-5 ${getRowBg()}`}
+                    style={row.kind === 'gap' ? { backgroundImage: DIAGONAL_STRIPE } : undefined}
+                  >
+                    <span className="w-10 flex-shrink-0 text-right pr-2 text-gray-600 select-none border-r border-gray-700">
+                      {row.kind !== 'gap' ? row.lineNum : ''}
+                    </span>
+                    <span className="flex-1 pl-3 whitespace-pre overflow-x-hidden text-gray-300">
+                      {row.kind !== 'gap' && row.kind === 'modified' ? (
+                        <HighlightedContentB content={row.content} spans={row.spans} />
+                      ) : row.kind !== 'gap' ? (
+                        row.content
+                      ) : null}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
-          )}
+          </div>
         </div>
-      </div>
       )}
 
       {/* Status Bar */}
       {hasCompared && parsedJsonA && parsedJsonB && (
-        <div className={`h-12 border-t-2 flex items-center justify-center ${
-          hasDifferences
-            ? 'border-yellow-500 bg-yellow-50 dark:bg-yellow-900/20'
-            : 'border-green-500 bg-green-50 dark:bg-green-900/20'
-        }`}>
-          <p className={`font-medium ${
+        <div
+          className={`h-12 border-t-2 flex items-center justify-center ${
             hasDifferences
-              ? 'text-yellow-700 dark:text-yellow-300'
-              : 'text-green-700 dark:text-green-300'
-          }`}>
+              ? 'border-amber-500 bg-amber-900/20'
+              : 'border-green-500 bg-green-900/20'
+          }`}
+        >
+          <p
+            className={`font-medium ${
+              hasDifferences ? 'text-amber-300' : 'text-green-300'
+            }`}
+          >
             {hasDifferences
-              ? `Found ${diffLinesA.filter(l => l.type !== 'unchanged').length} differences`
+              ? `Found ${diffSummary.added + diffSummary.removed + diffSummary.modified} differences`
               : 'No differences found - JSON objects are identical'}
           </p>
-        </div>
-      )}
-
-      {/* Edit Mode Hint */}
-      {hasCompared && (
-        <div className="h-10 bg-blue-50 dark:bg-blue-900/20 border-t border-blue-200 dark:border-blue-800 flex items-center justify-center gap-4">
-          <p className="text-xs text-blue-700 dark:text-blue-300">
-            💡 Want to edit? Click "Edit Mode" to modify the JSON
-          </p>
-          <button
-            onClick={() => setHasCompared(false)}
-            className="px-3 py-1 text-xs bg-blue-500 hover:bg-blue-600 text-white rounded transition-colors font-medium"
-          >
-            Edit Mode
-          </button>
         </div>
       )}
     </div>
