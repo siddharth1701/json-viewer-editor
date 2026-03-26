@@ -55,9 +55,18 @@ function App() {
     }
   }, [isDarkMode]);
 
-  // Keyboard shortcuts
+  // Keyboard shortcuts (don't intercept when typing in inputs)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      const isInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.contentEditable === 'true';
+
+      // Don't intercept shortcuts when user is typing in input fields
+      // Exception: allow Ctrl+Z/Ctrl+Y/Ctrl+S even in inputs since they have well-defined meanings
+      if (isInput && e.key === 'f') {
+        return; // Allow browser's native search in inputs
+      }
+
       // Ctrl/Cmd + Z for undo
       if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
         e.preventDefault();
@@ -79,8 +88,8 @@ function App() {
         downloadJson();
       }
 
-      // Ctrl/Cmd + F for search
-      if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+      // Ctrl/Cmd + F for search (only when not in input field)
+      if ((e.ctrlKey || e.metaKey) && e.key === 'f' && !isInput) {
         e.preventDefault();
         setShowSearch(true);
       }

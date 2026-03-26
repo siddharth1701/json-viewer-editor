@@ -77,9 +77,14 @@ const tourSteps: TourStep[] = [
 
 export default function GuidedTourModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
   const [currentStep, setCurrentStep] = useState(0);
-  const [hasSeenTour, setHasSeenTour] = useState(
-    localStorage.getItem('json-viewer-seen-tour') === 'true'
-  );
+  const [hasSeenTour, setHasSeenTour] = useState(() => {
+    try {
+      return localStorage.getItem('json-viewer-seen-tour') === 'true';
+    } catch {
+      // localStorage not available in private browsing or some environments
+      return false;
+    }
+  });
 
   const step = tourSteps[currentStep];
 
@@ -98,13 +103,21 @@ export default function GuidedTourModal({ isOpen, onClose }: { isOpen: boolean; 
   };
 
   const handleComplete = () => {
-    localStorage.setItem('json-viewer-seen-tour', 'true');
+    try {
+      localStorage.setItem('json-viewer-seen-tour', 'true');
+    } catch {
+      // Silently fail if localStorage not available
+    }
     setHasSeenTour(true);
     onClose();
   };
 
   const handleSkip = () => {
-    localStorage.setItem('json-viewer-seen-tour', 'true');
+    try {
+      localStorage.setItem('json-viewer-seen-tour', 'true');
+    } catch {
+      // Silently fail if localStorage not available
+    }
     setHasSeenTour(true);
     onClose();
   };

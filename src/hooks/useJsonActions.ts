@@ -186,6 +186,18 @@ export function useJsonActions() {
         ? jsonString.slice(0, 100000) + '\n\n... [JSON truncated for PDF]'
         : jsonString;
 
+      // Escape HTML to prevent XSS
+      const escapeHtml = (text: string): string => {
+        const map: Record<string, string> = {
+          '&': '&amp;',
+          '<': '&lt;',
+          '>': '&gt;',
+          '"': '&quot;',
+          "'": '&#039;',
+        };
+        return text.replace(/[&<>"']/g, (m) => map[m]);
+      };
+
       // Create an HTML container for the JSON
       const container = document.createElement('div');
       container.style.padding = '20px';
@@ -194,10 +206,10 @@ export function useJsonActions() {
       container.style.backgroundColor = '#fff';
       container.style.width = '800px';
       container.innerHTML = `
-        <h1 style="margin-top: 0; font-size: 24px; margin-bottom: 10px;">JSON Export: ${label}</h1>
+        <h1 style="margin-top: 0; font-size: 24px; margin-bottom: 10px;">JSON Export: ${escapeHtml(label)}</h1>
         <p style="color: #666; font-size: 10px; margin: 5px 0;">Size: ${formatBytes(new Blob([jsonString]).size)} | Generated: ${new Date().toLocaleString()}</p>
         <pre style="background: #f5f5f5; padding: 15px; border-radius: 4px; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;">
-${truncatedJson}
+${escapeHtml(truncatedJson)}
         </pre>
       `;
       document.body.appendChild(container);
@@ -240,8 +252,10 @@ ${truncatedJson}
         dismissToast(toastId);
         showSuccessToast('PDF exported successfully!');
       } finally {
-        // Clean up
-        document.body.removeChild(container);
+        // Clean up - remove DOM element and release memory
+        if (document.body.contains(container)) {
+          document.body.removeChild(container);
+        }
       }
     } catch (error) {
       dismissToast(toastId);

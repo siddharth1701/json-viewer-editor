@@ -186,7 +186,7 @@ export const useAppStore = create<AppState>()(
       toggleRightSidebar: () =>
         set((state) => ({ rightSidebarOpen: !state.rightSidebarOpen })),
 
-      // Per-Tab Undo/Redo
+      // Per-Tab Undo/Redo (memory-optimized - max 20 entries to prevent localStorage overflow)
       pushHistory: (tabId, content) => {
         set((state) => ({
           tabs: state.tabs.map((tab) => {
@@ -194,8 +194,10 @@ export const useAppStore = create<AppState>()(
               // Keep only history up to current position, then add new entry
               const newHistory = tab.history.slice(0, tab.historyIndex + 1);
               newHistory.push(content);
-              // Keep last 50 entries
-              const trimmedHistory = newHistory.slice(-50);
+              // Keep last 20 entries (reduced from 50 to prevent localStorage quota issues with large files)
+              // Calculation: 20 entries × multiple tabs × large JSON files can still hit 5-10MB localStorage limit
+              // 20 is a reasonable balance for undo/redo UX vs memory usage
+              const trimmedHistory = newHistory.slice(-20);
               return {
                 ...tab,
                 history: trimmedHistory,

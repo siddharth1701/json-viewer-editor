@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import * as d3 from 'd3';
 import { ZoomIn, ZoomOut, Maximize2, Download } from 'lucide-react';
 import { useAppStore } from '@/stores/useAppStore';
@@ -158,8 +158,10 @@ export default function VisualizationView() {
     return filteredNode;
   };
 
-  useEffect(() => {
-    if (!jsonData || !svgRef.current || !containerRef.current) return;
+  // Memoize tree conversion to prevent unnecessary recreation on collapsedNodes change
+  // Tree should only be rebuilt when jsonData changes, not on every collapse/expand
+  const memoizedTreeData = useMemo(() => {
+    if (!jsonData) return null;
 
     // Reset node counter for fresh ID assignment
     nodeIdCounterRef.current = 0;
@@ -171,6 +173,13 @@ export default function VisualizationView() {
       initialCollapseRef.current.clear();
     }
 
+    // Convert JSON to tree structure with auto-collapse at depth > 2
+    return convertToTree(jsonData);
+  }, [jsonData]); // Only recalculate when jsonData changes
+
+  useEffect(() => {
+    if (!memoizedTreeData || !svgRef.current || !containerRef.current) return;
+
     // Clear previous visualization
     d3.select(svgRef.current).selectAll('*').remove();
 
@@ -178,12 +187,11 @@ export default function VisualizationView() {
     const width = container.clientWidth;
     const height = container.clientHeight;
 
-    // Convert JSON to tree structure with auto-collapse at depth > 2
-    const treeData = convertToTree(jsonData);
+    const treeData = memoizedTreeData;
     treeDataRef.current = treeData;
 
     // Set initial collapsed nodes on first load
-    if (collapsedNodes.size === 0 && initialCollapseRef.current.size > 0) {
+    if (collapsedNodes.size === 0 && initialCollapseRef.current && initialCollapseRef.current.size > 0) {
       setCollapsedNodes(new Set(initialCollapseRef.current));
       return; // Let the effect run again with collapsed nodes
     }
@@ -444,7 +452,7 @@ export default function VisualizationView() {
         currentTransformRef.current
       );
     }
-  }, [jsonData, collapsedNodes, isDarkMode]);
+  }, [memoizedTreeData, collapsedNodes, isDarkMode]);
 
   if (!jsonData) {
     return (

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Upload, Link as LinkIcon, ChevronUp, ChevronDown, Settings2, FileText } from 'lucide-react';
 import { useAppStore } from '@/stores/useAppStore';
 import { validateJSON } from '@/utils/jsonUtils';

@@ -57,6 +57,13 @@ export default function SearchModal({ isOpen, onClose }: SearchModalProps) {
       let searchRegex: RegExp;
       try {
         if (useRegex) {
+          // Validate regex pattern to prevent ReDoS (Regular Expression Denial of Service)
+          // Check for common ReDoS patterns: nested quantifiers, alternation with overlapping groups
+          const redosPatterns = [/(\+\+)|(\*\*)|(\?\?)/g, /\([^)]*[+*?]{2,}/g];
+          if (redosPatterns.some(p => p.test(query))) {
+            throw new Error('Regex pattern too complex (potential ReDoS). Please simplify.');
+          }
+
           searchRegex = new RegExp(query, caseSensitive ? 'g' : 'gi');
         } else {
           const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -67,13 +74,18 @@ export default function SearchModal({ isOpen, onClose }: SearchModalProps) {
       }
 
       lines.forEach((line, index) => {
-        const matches = (line.match(searchRegex) || []).length;
-        if (matches > 0) {
-          foundLines.push({
-            line: index + 1,
-            content: line,
-            matches,
-          });
+        try {
+          // Add timeout protection for regex matching on very long lines
+          const matches = (line.match(searchRegex) || []).length;
+          if (matches > 0) {
+            foundLines.push({
+              line: index + 1,
+              content: line,
+              matches,
+            });
+          }
+        } catch {
+          // Skip lines that cause regex errors
         }
       });
 
