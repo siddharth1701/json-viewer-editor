@@ -11,6 +11,7 @@ import {
   ArrowDownAZ,
   Copy,
   Wrench,
+  Minimize2,
 } from 'lucide-react';
 import { useAppStore } from '@/stores/useAppStore';
 import { useJsonActions } from '@/hooks/useJsonActions';
@@ -170,10 +171,11 @@ export default function ViewTabs() {
         <button
           onClick={minify}
           disabled={!hasContent}
-          className="px-3 py-1.5 text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors"
+          className="px-3 py-1.5 text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg flex items-center gap-2 transition-colors"
           title="Minify JSON"
         >
-          <span>Minify</span>
+          <Minimize2 className="w-4 h-4" />
+          <span className="hidden sm:inline">Minify</span>
         </button>
         <button
           onClick={() => {
@@ -190,7 +192,6 @@ export default function ViewTabs() {
         <button
           onClick={async () => {
             await copyToClipboard(true);
-            showSuccessToast('JSON copied to clipboard!');
           }}
           disabled={!hasContent}
           className="px-3 py-1.5 text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg flex items-center gap-2 transition-colors"

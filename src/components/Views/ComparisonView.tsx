@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Upload, Link as LinkIcon, ChevronUp, ChevronDown, Settings2, FileText } from 'lucide-react';
 import { useAppStore } from '@/stores/useAppStore';
 import { validateJSON } from '@/utils/jsonUtils';
@@ -352,11 +352,27 @@ export default function ComparisonView() {
     }
   }, [jsonTextB]);
 
-  // Re-calculate diff when user edits after initial comparison
+  // Debounced diff recalculation (300ms) to avoid sluggish performance on large JSON
+  const diffTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
   useEffect(() => {
-    if (hasCompared && parsedJsonA && parsedJsonB) {
-      calculateDiff();
+    if (!hasCompared || !parsedJsonA || !parsedJsonB) return;
+
+    // Clear previous timeout
+    if (diffTimeoutRef.current) {
+      clearTimeout(diffTimeoutRef.current);
     }
+
+    // Set new debounced timeout
+    diffTimeoutRef.current = setTimeout(() => {
+      calculateDiff();
+    }, 300);
+
+    return () => {
+      if (diffTimeoutRef.current) {
+        clearTimeout(diffTimeoutRef.current);
+      }
+    };
   }, [parsedJsonA, parsedJsonB, hasCompared]);
 
   // Handle resize

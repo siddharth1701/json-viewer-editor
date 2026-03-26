@@ -9,6 +9,7 @@ import MainContent from './components/Layout/MainContent';
 import StatusBar from './components/Layout/StatusBar';
 import ErrorBoundary from './components/ErrorBoundary';
 import GuidedTourModal from './components/Modals/GuidedTourModal';
+import SearchModal from './components/Modals/SearchModal';
 
 function App() {
   const isDarkMode = useAppStore((state) => state.isDarkMode);
@@ -17,6 +18,7 @@ function App() {
   const setActiveTab = useAppStore((state) => state.setActiveTab);
   const { downloadJson } = useJsonActions();
   const [showGuidedTour, setShowGuidedTour] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
 
   // Initialize active tab on mount and show tour if first time
   useEffect(() => {
@@ -76,15 +78,21 @@ function App() {
         e.preventDefault();
         downloadJson();
       }
+
+      // Ctrl/Cmd + F for search
+      if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+        e.preventDefault();
+        setShowSearch(true);
+      }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [downloadJson]);
 
   return (
     <ErrorBoundary>
-      <div className="h-screen flex flex-col bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
+      <div id="app-root" className="h-screen flex flex-col bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
         <Navbar />
         <div className="flex-1 flex overflow-hidden">
           <LeftSidebar />
@@ -93,6 +101,7 @@ function App() {
         </div>
         <StatusBar />
         <GuidedTourModal isOpen={showGuidedTour} onClose={() => setShowGuidedTour(false)} />
+        <SearchModal isOpen={showSearch} onClose={() => setShowSearch(false)} />
         <Toaster
           position="bottom-right"
           reverseOrder={false}
